@@ -1,4 +1,11 @@
-import { moment } from 'obsidian';
+import { moment, normalizePath } from 'obsidian';
+
+/**
+ * Normalizes vault file paths: replaces backslashes/redundant slashes and applies Unicode NFC composition.
+ */
+export function normalizeFilePath(path: string): string {
+	return normalizePath(path).normalize('NFC');
+}
 
 /**
  * Calculates a standard Git SHA-1 Hash: sha1("blob " + filesize + "\0" + filedata)
@@ -43,8 +50,10 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 export function isTextFile(path: string): boolean {
-	const ext = path.split('.').pop()?.toLowerCase();
-	if (!ext) return true;
+	const filename = path.split('/').pop() || path;
+	const dotIndex = filename.lastIndexOf('.');
+	if (dotIndex <= 0) return true;
+	const ext = filename.slice(dotIndex + 1).toLowerCase();
 	return !BINARY_EXTENSIONS.has(ext);
 }
 

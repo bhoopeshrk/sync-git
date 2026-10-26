@@ -1,4 +1,4 @@
-import { App, Notice, moment, normalizePath, TFile } from 'obsidian';
+import { App, Notice, moment, TFile } from 'obsidian';
 import { GitHubApiClient } from './github-api';
 import { GitHubSyncSettings, ConflictInfo } from './types';
 import {
@@ -8,6 +8,7 @@ import {
 	isTextFile,
 	normalizeTextBuffer,
 	globToRegex,
+	normalizeFilePath,
 } from './utils';
 import { ConflictModal } from './conflict-modal';
 
@@ -28,6 +29,17 @@ export class SyncEngine {
 		private settings: GitHubSyncSettings,
 		private api: GitHubApiClient,
 	) {}
+
+	private getFileFromVault(normalizedPath: string): TFile | null {
+		const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+		if (file instanceof TFile) return file;
+		const nfdPath = normalizedPath.normalize('NFD');
+		if (nfdPath !== normalizedPath) {
+			const nfdFile = this.app.vault.getAbstractFileByPath(nfdPath);
+			if (nfdFile instanceof TFile) return nfdFile;
+		}
+		return null;
+	}
 
 	private async getRepoName(): Promise<string> {
 		if (
@@ -64,12 +76,13 @@ export class SyncEngine {
 	}
 
 	private isIgnored(path: string): boolean {
+		const normPath = normalizeFilePath(path);
 		const configDir = this.app.vault.configDir;
-		if (path.startsWith(`${configDir}/`) || path.includes('.trash'))
+		if (normPath.startsWith(`${configDir}/`) || normPath.includes('.trash'))
 			return true;
 
 		for (const regex of this.ignoreRegexes) {
-			if (regex.test(path)) return true;
+			if (regex.test(normPath)) return true;
 		}
 		return false;
 	}
@@ -91,6 +104,7 @@ export class SyncEngine {
 	async runSync(
 		isAuto = false,
 		onProgress?: (text: string) => void,
+		force = false,
 	): Promise<SyncResult> {
 		this.ignoreRegexes = await this.loadIgnoreFile();
 		const startTime = Date.now();
@@ -116,39 +130,48 @@ export class SyncEngine {
 				const remoteSizes = new Map<string, number>();
 				remoteTree.tree.forEach((item) => {
 					if (item.type === 'blob') {
-						remoteFiles.set(item.path, item.sha);
-						remoteSizes.set(item.path, item.size || 0);
+						const normPath = normalizeFilePath(item.path);
+						remoteFiles.set(normPath, item.sha);
+						remoteSizes.set(normPath, item.size || 0);
 					}
 				});
 
 				const localFiles = this.app.vault
 					.getFiles()
-					.filter((f) => !this.isIgnored(f.path));
+					.filter((f) => !this.isIgnored(normalizeFilePath(f.path)));
 				const localHashes = new Map<string, string>();
+				const localFileMap = new Map<string, TFile>();
 
-				if (!this.settings.localHashCache) {
+				for (const file of localFiles) {
+					const normPath = normalizeFilePath(file.path);
+					localFileMap.set(normPath, file);
+				}
+
+				if (!this.settings.localHashCache || force) {
 					this.settings.localHashCache = {};
 				}
 
-				for (const file of localFiles) {
+				for (const [normPath, file] of localFileMap.entries()) {
 					if (file.stat.size > 25 * 1024 * 1024) {
-						skippedFiles.push(file.path);
+						skippedFiles.push(normPath);
 						continue;
 					}
-					const cache = this.settings.localHashCache[file.path];
+					const cache = !force
+						? this.settings.localHashCache[normPath]
+						: undefined;
 					const mtime = file.stat.mtime;
 					const size = file.stat.size;
 
 					if (cache && cache.mtime === mtime && cache.size === size) {
-						localHashes.set(file.path, cache.sha);
+						localHashes.set(normPath, cache.sha);
 					} else {
 						let buffer = await this.app.vault.readBinary(file);
-						if (isTextFile(file.path)) {
+						if (isTextFile(normPath)) {
 							buffer = normalizeTextBuffer(buffer);
 						}
 						const sha = await calculateGitSha(buffer);
-						localHashes.set(file.path, sha);
-						this.settings.localHashCache[file.path] = {
+						localHashes.set(normPath, sha);
+						this.settings.localHashCache[normPath] = {
 							mtime,
 							size,
 							sha,
@@ -156,10 +179,96 @@ export class SyncEngine {
 					}
 				}
 
-				const localFilePaths = new Set(localFiles.map((f) => f.path));
+				// Check and hash unindexed candidates (e.g. root dotfiles like .gitignore, .gitattributes)
+				const unindexedCandidates = new Set<string>();
+				for (const path of remoteFiles.keys()) {
+					if (!localFileMap.has(path) && !this.isIgnored(path)) {
+						unindexedCandidates.add(path);
+					}
+				}
+				for (const path of Object.keys(this.settings.lastSyncState)) {
+					const normPath = normalizeFilePath(path);
+					if (!localFileMap.has(normPath) && !this.isIgnored(normPath)) {
+						unindexedCandidates.add(normPath);
+					}
+				}
+				try {
+					const rootListing = await this.app.vault.adapter.list('');
+					for (const filePath of rootListing.files) {
+						const normPath = normalizeFilePath(filePath);
+						if (
+							normPath.startsWith('.') &&
+							!this.isIgnored(normPath) &&
+							!localFileMap.has(normPath)
+						) {
+							unindexedCandidates.add(normPath);
+						}
+					}
+				} catch {
+					// Ignore root listing error
+				}
+
+				for (const path of unindexedCandidates) {
+					try {
+						if (await this.app.vault.adapter.exists(path)) {
+							const stat = await this.app.vault.adapter.stat(path);
+							if (stat && stat.type === 'file') {
+								if (stat.size > 25 * 1024 * 1024) {
+									skippedFiles.push(path);
+									continue;
+								}
+								const cache = !force
+									? this.settings.localHashCache[path]
+									: undefined;
+								const mtime = stat.mtime;
+								const size = stat.size;
+
+								if (
+									cache &&
+									cache.mtime === mtime &&
+									cache.size === size
+								) {
+									localHashes.set(path, cache.sha);
+								} else {
+									let buffer =
+										await this.app.vault.adapter.readBinary(
+											path,
+										);
+									if (isTextFile(path)) {
+										buffer = normalizeTextBuffer(buffer);
+									}
+									const sha = await calculateGitSha(buffer);
+									localHashes.set(path, sha);
+									this.settings.localHashCache[path] = {
+										mtime,
+										size,
+										sha,
+									};
+								}
+							}
+						}
+					} catch {
+						// Ignore unindexed read error
+					}
+				}
+
+				const allLocalPaths = new Set([
+					...localFileMap.keys(),
+					...unindexedCandidates,
+				]);
 				for (const path of Object.keys(this.settings.localHashCache)) {
-					if (!localFilePaths.has(path)) {
+					if (!allLocalPaths.has(path)) {
 						delete this.settings.localHashCache[path];
+					}
+				}
+
+				// Normalize any existing keys in lastSyncState
+				for (const path of Object.keys(this.settings.lastSyncState)) {
+					const normPath = normalizeFilePath(path);
+					if (normPath !== path) {
+						this.settings.lastSyncState[normPath] =
+							this.settings.lastSyncState[path]!;
+						delete this.settings.lastSyncState[path];
 					}
 				}
 
@@ -189,10 +298,6 @@ export class SyncEngine {
 					...Object.keys(this.settings.lastSyncState),
 				]);
 
-				const localFileMap = new Map(
-					localFiles.map((f) => [f.path, f]),
-				);
-
 				for (const path of allPaths) {
 					const localFile = localFileMap.get(path);
 					const remoteSize = remoteSizes.get(path) || 0;
@@ -212,7 +317,10 @@ export class SyncEngine {
 					const baseSha = this.settings.lastSyncState[path];
 
 					if (localSha === remoteSha) {
-						if (remoteSha && this.settings.lastSyncState[path] !== remoteSha) {
+						if (
+							remoteSha &&
+							this.settings.lastSyncState[path] !== remoteSha
+						) {
 							this.settings.lastSyncState[path] = remoteSha;
 							stateChanged = true;
 						}
@@ -244,37 +352,68 @@ export class SyncEngine {
 								conflicts++;
 								continue;
 							}
-							if (localFile && remoteSha) {
-								const localContent = await this.app.vault.readBinary(localFile);
-								const localLines = new TextDecoder().decode(localContent).split('\n').length;
-
-								let remoteContentPreview = "";
+							if (remoteSha) {
+								let localContent: ArrayBuffer;
+								let localTimestamp = 0;
+								if (localFile) {
+									localContent =
+										await this.app.vault.readBinary(
+											localFile,
+										);
+									localTimestamp = localFile.stat.mtime;
+								} else {
+									localContent =
+										await this.app.vault.adapter.readBinary(
+											path,
+										);
+									const stat =
+										await this.app.vault.adapter.stat(path);
+									localTimestamp = stat ? stat.mtime : 0;
+								}
+								const localLines = new TextDecoder()
+									.decode(localContent)
+									.split('\n').length;
+								let remoteContentPreview = '';
 								let remoteLines = 0;
 								let remoteTimestamp = 0;
 								try {
-									const remoteBuffer = await this.api.downloadBlob(repo, remoteSha);
-									remoteLines = new TextDecoder().decode(remoteBuffer).split('\n').length;
+									const remoteBuffer =
+										await this.api.downloadBlob(
+											repo,
+											remoteSha,
+										);
+									remoteLines = new TextDecoder()
+										.decode(remoteBuffer)
+										.split('\n').length;
 									if (isTextFile(path)) {
-										remoteContentPreview = new TextDecoder().decode(remoteBuffer)
-											.split('\n')
-											.slice(0, 15)
-											.join('\n');
+										remoteContentPreview =
+											new TextDecoder()
+												.decode(remoteBuffer)
+												.split('\n')
+												.slice(0, 15)
+												.join('\n');
 									} else {
-										remoteContentPreview = "[Binary File]";
+										remoteContentPreview =
+											'[Binary File]';
 									}
-									remoteTimestamp = await this.api.getFileLastModified(repo, path);
+									remoteTimestamp =
+										await this.api.getFileLastModified(
+											repo,
+											path,
+										);
 								} catch {
 									// ignore download error and proceed with defaults
 								}
 
-								let localContentPreview = "";
+								let localContentPreview = '';
 								if (isTextFile(path)) {
-									localContentPreview = new TextDecoder().decode(localContent)
+									localContentPreview = new TextDecoder()
+										.decode(localContent)
 										.split('\n')
 										.slice(0, 15)
 										.join('\n');
 								} else {
-									localContentPreview = "[Binary File]";
+									localContentPreview = '[Binary File]';
 								}
 
 								const conflictInfo: ConflictInfo = {
@@ -283,7 +422,7 @@ export class SyncEngine {
 									localLines,
 									remoteSize,
 									remoteLines,
-									localTimestamp: localFile.stat.mtime,
+									localTimestamp,
 									remoteTimestamp,
 									localContentPreview,
 									remoteContentPreview,
@@ -300,11 +439,14 @@ export class SyncEngine {
 				}
 
 				for (const path of filesToDeleteLocally) {
-					const file = this.app.vault.getAbstractFileByPath(
-						normalizePath(path),
-					);
+					const normalizedPath = normalizeFilePath(path);
+					const file = this.getFileFromVault(normalizedPath);
 					if (file) {
 						await this.app.fileManager.trashFile(file);
+					} else if (
+						await this.app.vault.adapter.exists(normalizedPath)
+					) {
+						await this.app.vault.adapter.remove(normalizedPath);
 					}
 					delete this.settings.lastSyncState[path];
 					stateChanged = true;
@@ -318,24 +460,61 @@ export class SyncEngine {
 						repo,
 						remoteFiles.get(path)!,
 					);
-					const normalizedPath = normalizePath(path);
-					const existingFile =
-						this.app.vault.getAbstractFileByPath(normalizedPath);
-					if (existingFile instanceof TFile) {
-						await this.app.vault.modifyBinary(
-							existingFile,
-							buffer,
-						);
-					} else {
-						const folders = normalizedPath.split('/');
-						folders.pop();
-						if (folders.length > 0) {
-							await this.ensureDirectoryExists(folders.join('/'));
+					const normalizedPath = normalizeFilePath(path);
+					const existingFile = this.getFileFromVault(normalizedPath);
+					try {
+						if (existingFile instanceof TFile) {
+							await this.app.vault.modifyBinary(
+								existingFile,
+								buffer,
+							);
+						} else {
+							const fileExistsOnDisk =
+								await this.app.vault.adapter.exists(
+									normalizedPath,
+								);
+							if (fileExistsOnDisk) {
+								await this.app.vault.adapter.writeBinary(
+									normalizedPath,
+									buffer,
+								);
+							} else {
+								const folders = normalizedPath.split('/');
+								folders.pop();
+								if (folders.length > 0) {
+									await this.ensureDirectoryExists(
+										folders.join('/'),
+									);
+								}
+								try {
+									await this.app.vault.createBinary(
+										normalizedPath,
+										buffer,
+									);
+								} catch (err: unknown) {
+									const errMsg =
+										err instanceof Error
+											? err.message
+											: String(err);
+									if (
+										errMsg
+											.toLowerCase()
+											.includes('already exists')
+									) {
+										await this.app.vault.adapter.writeBinary(
+											normalizedPath,
+											buffer,
+										);
+									} else {
+										throw err;
+									}
+								}
+							}
 						}
-						await this.app.vault.createBinary(
-							normalizedPath,
-							buffer,
-						);
+					} catch (err: unknown) {
+						const detail =
+							err instanceof Error ? err.message : String(err);
+						throw new Error(`Failed writing "${path}": ${detail}`);
 					}
 					this.settings.lastSyncState[path] = remoteFiles.get(path)!;
 					stateChanged = true;
@@ -356,11 +535,35 @@ export class SyncEngine {
 					for (let i = 0; i < totalUploads; i++) {
 						const path = filesToUpload[i]!;
 						onProgress?.(`Syncing... ${i + 1}/${totalUploads}`);
-						const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
-						if (!(file instanceof TFile)) continue;
-						let buffer = await this.app.vault.readBinary(file);
-						if (isTextFile(path)) {
-							buffer = normalizeTextBuffer(buffer);
+						const normalizedPath = normalizeFilePath(path);
+						const file = this.getFileFromVault(normalizedPath);
+						let buffer: ArrayBuffer;
+						try {
+							if (file instanceof TFile) {
+								buffer = await this.app.vault.readBinary(file);
+							} else if (
+								await this.app.vault.adapter.exists(
+									normalizedPath,
+								)
+							) {
+								buffer =
+									await this.app.vault.adapter.readBinary(
+										normalizedPath,
+									);
+							} else {
+								continue;
+							}
+							if (isTextFile(path)) {
+								buffer = normalizeTextBuffer(buffer);
+							}
+						} catch (err: unknown) {
+							const detail =
+								err instanceof Error
+									? err.message
+									: String(err);
+							throw new Error(
+								`Failed reading "${path}" for upload: ${detail}`,
+							);
 						}
 						const base64 = arrayBufferToBase64(buffer);
 						const newBlobSha = await this.api.uploadBlob(
@@ -414,8 +617,11 @@ export class SyncEngine {
 					filesToUpload.length > 0 ||
 					skippedFiles.length > 0
 				) {
-					const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-					const totalChanged = filesToDownload.length + filesToUpload.length;
+					const duration = ((Date.now() - startTime) / 1000).toFixed(
+						1,
+					);
+					const totalChanged =
+						filesToDownload.length + filesToUpload.length;
 					let msg = '';
 
 					if (totalChanged <= 5 && totalChanged > 0) {
@@ -428,13 +634,31 @@ export class SyncEngine {
 						}
 						msg = msg.trimEnd();
 					} else if (totalChanged > 5) {
-						const noteCount = filesToDownload.concat(filesToUpload).filter((p) => p.endsWith('.md')).length;
-						const imageCount = filesToDownload.concat(filesToUpload).filter((p) => /\.(png|jpg|jpeg|gif|svg|webp|bmp|ico)$/i.test(p)).length;
-						const otherCount = totalChanged - noteCount - imageCount;
+						const noteCount = filesToDownload
+							.concat(filesToUpload)
+							.filter((p) => p.endsWith('.md')).length;
+						const imageCount = filesToDownload
+							.concat(filesToUpload)
+							.filter((p) =>
+								/\.(png|jpg|jpeg|gif|svg|webp|bmp|ico)$/i.test(
+									p,
+								),
+							).length;
+						const otherCount =
+							totalChanged - noteCount - imageCount;
 						const parts: string[] = [];
-						if (noteCount > 0) parts.push(`${noteCount} note${noteCount > 1 ? 's' : ''}`);
-						if (imageCount > 0) parts.push(`${imageCount} image${imageCount > 1 ? 's' : ''}`);
-						if (otherCount > 0) parts.push(`${otherCount} other file${otherCount > 1 ? 's' : ''}`);
+						if (noteCount > 0)
+							parts.push(
+								`${noteCount} note${noteCount > 1 ? 's' : ''}`,
+							);
+						if (imageCount > 0)
+							parts.push(
+								`${imageCount} image${imageCount > 1 ? 's' : ''}`,
+							);
+						if (otherCount > 0)
+							parts.push(
+								`${otherCount} other file${otherCount > 1 ? 's' : ''}`,
+							);
 						msg = `GitHub sync complete. ${parts.join(', ')}`;
 					} else {
 						msg = 'GitHub sync complete. No changes.';
@@ -474,8 +698,8 @@ export class SyncEngine {
 					);
 					continue;
 				}
-				if (!isAuto || message.includes('rate limit')) {
-					new Notice(`GitHub sync error: ${message}`);
+				if (isAuto && message.includes('rate limit')) {
+					new Notice(`GitHub sync error: ${message}`, 8000);
 				}
 				throw error;
 			}
@@ -504,18 +728,20 @@ export class SyncEngine {
 					filesToDownload.push(info.filePath);
 					resolve();
 				} else if (choice === 'both') {
-					const file = this.app.vault.getAbstractFileByPath(
-						normalizePath(info.filePath),
+					const normalizedPath = normalizeFilePath(info.filePath);
+					const file = this.getFileFromVault(normalizedPath);
+					const extIndex = info.filePath.lastIndexOf('.');
+					const base =
+						extIndex !== -1
+							? info.filePath.slice(0, extIndex)
+							: info.filePath;
+					const ext =
+						extIndex !== -1 ? info.filePath.slice(extIndex) : '';
+					const dateStr = moment().format('YYYY-MM-DD');
+					const conflictPath = normalizeFilePath(
+						`${base} (Local Conflict ${dateStr})${ext}`,
 					);
 					if (file) {
-						const extIndex = info.filePath.lastIndexOf('.');
-						const base =
-							extIndex !== -1 ? info.filePath.slice(0, extIndex) : info.filePath;
-						const ext = extIndex !== -1 ? info.filePath.slice(extIndex) : '';
-						const dateStr = moment().format('YYYY-MM-DD');
-						const conflictPath = normalizePath(
-							`${base} (Local Conflict ${dateStr})${ext}`,
-						);
 						void this.app.vault
 							.rename(file, conflictPath)
 							.then(() => {
@@ -529,8 +755,16 @@ export class SyncEngine {
 								resolve();
 							});
 					} else {
-						filesToDownload.push(info.filePath);
-						resolve();
+						void this.app.vault.adapter
+							.rename(normalizedPath, conflictPath)
+							.then(() => {
+								filesToDownload.push(info.filePath);
+								resolve();
+							})
+							.catch(() => {
+								filesToDownload.push(info.filePath);
+								resolve();
+							});
 					}
 				}
 			}).open();
@@ -546,9 +780,12 @@ export class SyncEngine {
 			} else {
 				currentPath = folder;
 			}
-			const normalized = normalizePath(currentPath);
-			const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
-			if (!abstractFile) {
+			const normalized = normalizeFilePath(currentPath);
+			const abstractFile = this.getFileFromVault(normalized);
+			const existsOnDisk = abstractFile
+				? true
+				: await this.app.vault.adapter.exists(normalized);
+			if (!abstractFile && !existsOnDisk) {
 				try {
 					await this.app.vault.createFolder(normalized);
 				} catch {

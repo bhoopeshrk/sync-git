@@ -1,6 +1,6 @@
 {
 	"name": "sync-git",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"description": "Headless cross-platform GitHub sync for Obsidian",
 	"main": "main.js",
 	"type": "module",

@@ -114,11 +114,22 @@ export default class GitHubSyncPlugin extends Plugin {
 		}
 		this.syncing = true;
 		this.updateStatusBar('syncing');
+		const startTimestamp = Date.now();
 		try {
-			if (!isAuto) new Notice('Syncing with GitHub...');
-			const result = await this.syncEngine.runSync(isAuto, (text) => {
-				this.updateStatusBar('syncing', text);
-			});
+			if (!isAuto) {
+				new Notice(
+					force
+						? 'Force syncing with GitHub (ignoring local cache)...'
+						: 'Syncing with GitHub...',
+				);
+			}
+			const result = await this.syncEngine.runSync(
+				isAuto,
+				(text) => {
+					this.updateStatusBar('syncing', text);
+				},
+				force,
+			);
 			this.settings.lastSyncTime = Date.now();
 			await this.saveSettings();
 			if (result.conflicts > 0) {
@@ -146,7 +157,7 @@ export default class GitHubSyncPlugin extends Plugin {
 			const message =
 				error instanceof Error ? error.message : String(error);
 			this.updateStatusBar('error', message);
-			if (!isAuto) new Notice(`GitHub sync error: ${message}`);
+			if (!isAuto) new Notice(`GitHub sync error: ${message}`, 8000);
 
 			const entry = {
 				timestamp: Date.now(),
@@ -156,7 +167,7 @@ export default class GitHubSyncPlugin extends Plugin {
 				downloaded: 0,
 				conflicts: 0,
 				skipped: 0,
-				duration: 0,
+				duration: Date.now() - startTimestamp,
 				error: message,
 			};
 			this.settings.syncLog.push(entry);
