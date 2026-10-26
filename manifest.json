@@ -6,6 +6,6 @@
 	"description": "Sync your vault across devices using GitHub's REST API without requiring local Git.",
 	"author": "Bhoopesh R K",
 	"authorUrl": "https://github.com/bhoopeshrk",
-	"findingUrl": "https://github.com/bhoopeshrk/sync-git",
+	"fundingUrl": "https://github.com/bhoopeshrk/sync-git",
 	"isDesktopOnly": false
 }

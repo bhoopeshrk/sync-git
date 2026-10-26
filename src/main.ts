@@ -216,7 +216,7 @@ export default class GitHubSyncPlugin extends Plugin {
 				break;
 			case 'idle':
 				setIcon(iconEl, 'cloud');
-				textEl.setText(' synced');
+				textEl.setText(' Synced');
 				this.statusBarEl.addClass('ghs-status-idle');
 				this.statusBarEl.title = `GitHub sync: Up to date.\nLast sync: ${dateStr}\nClick to sync now`;
 				this.statusBarEl.onclick = () => {
@@ -242,7 +242,7 @@ export default class GitHubSyncPlugin extends Plugin {
 				break;
 			case 'error':
 				setIcon(iconEl, 'alert-triangle');
-				textEl.setText(' sync error');
+				textEl.setText(' Sync error');
 				this.statusBarEl.addClass('ghs-status-error');
 				this.statusBarEl.title = `GitHub sync: Sync failed.\nError: ${detail}\nClick to view log`;
 				this.statusBarEl.onclick = () => {

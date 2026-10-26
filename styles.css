@@ -10,9 +10,10 @@
 	gap: var(--size-2-2);
 }
 
-.ghs-token-setting .setting-item-control input.ghs-token-input {
-	flex: 1 1 auto !important;
-	width: 100% !important;
+.setting-item.ghs-token-setting .setting-item-control input[type="text"].ghs-token-input,
+.setting-item.ghs-token-setting .setting-item-control input[type="password"].ghs-token-input {
+	flex: 1 1 auto;
+	width: 100%;
 	min-width: 0;
 	font-family: var(--font-monospace);
 }
@@ -138,12 +139,12 @@
 .ghs-auth-callout a {
 	color: var(--text-accent);
 	text-decoration: underline;
-	text-decoration-style: dotted;
 	text-underline-offset: 2px;
 }
 
 .ghs-auth-callout a:hover {
-	text-decoration-style: solid;
+	color: var(--text-accent-hover, var(--text-accent));
+	text-decoration: underline;
 }
 
 .ghs-auth-callout ul {
@@ -157,8 +158,8 @@
 
 /* --- Status Bar Lucide Icons --------------------------------- */
 
-.plugin-sync-git {
-	display: inline-flex !important;
+.status-bar .status-bar-item.plugin-sync-git {
+	display: inline-flex;
 	align-items: center;
 	gap: 6px;
 	padding: 0 var(--size-2-2);
@@ -279,10 +280,10 @@
 	}
 
 	/* Ensure token input fills mobile control row width */
-	.ghs-token-setting .setting-item-control {
-		width: 100% !important;
-		display: flex !important;
-		justify-content: stretch !important;
+	.setting-item.ghs-token-setting .setting-item-control {
+		width: 100%;
+		display: flex;
+		justify-content: stretch;
 	}
 }
 
@@ -301,8 +302,10 @@
 
 /* --- Input Validation & Testing Badges ---------------------- */
 
-.ghs-input-invalid {
-	border-color: var(--text-error) !important;
+input.ghs-input-invalid,
+.setting-item-control input.ghs-input-invalid {
+	border-color: var(--text-error);
+	box-shadow: 0 0 0 1px var(--text-error);
 }
 
 .ghs-secured-badge {
