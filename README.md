@@ -1,5 +1,8 @@
 # SyncGit
 
+[![Obsidian Community Plugin](https://img.shields.io/badge/Obsidian-Community%20Plugin-7C3AED?logo=obsidian)](https://obsidian.md/plugins?id=sync-git)
+[![Latest Release](https://img.shields.io/github/v/release/bhoopeshrk/sync-git?color=blue)](https://github.com/bhoopeshrk/sync-git/releases/latest)
+
 Sync your Obsidian vault across all your devices — desktop, iOS, and Android — using GitHub's REST API. No local Git installation required.
 
 ---
@@ -25,15 +28,23 @@ SyncGit is a community plugin that keeps your Obsidian vault synchronized across
 
 ---
 
-## Install
+## Installation
 
-### From the Obsidian Community Plugin Store
-*(Coming soon — pending store submission)*
+### From Obsidian Community Plugins (Recommended)
 
-### Manual Install
-1. Download `main.js` and `manifest.json` from the [Releases](../../releases) page.
-2. Copy them to `<Vault>/.obsidian/plugins/sync-git/`.
-3. Restart Obsidian and enable the plugin under **Settings → Community plugins**.
+1. Open Obsidian **Settings**.
+2. Navigate to **Community plugins** and ensure **Restricted mode** is turned off.
+3. Select **Browse** and search for **SyncGit**.
+4. Select **Install**, then **Enable**.
+
+You can also open it directly in Obsidian: [Install SyncGit](obsidian://show-plugin?id=sync-git).
+
+### Manual installation
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest [Release](https://github.com/bhoopeshrk/sync-git/releases/latest).
+2. Create the folder `<Vault>/.obsidian/plugins/sync-git/`.
+3. Copy `main.js`, `manifest.json`, and `styles.css` into that folder.
+4. Reload Obsidian and enable the plugin under **Settings → Community plugins**.
 
 ---
 
