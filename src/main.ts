@@ -1,9 +1,10 @@
-import { Plugin, Platform, Notice, moment, setIcon } from 'obsidian';
+import { Plugin, Platform, Notice, setIcon } from 'obsidian';
 import { DEFAULT_SETTINGS, GitHubSyncSettings } from './types';
 import { GitHubSyncSettingTab } from './settings';
 import { GitHubApiClient } from './github-api';
 import { SyncEngine } from './sync-engine';
 import { SyncLogModal } from './sync-log-modal';
+import { getMoment } from './utils';
 
 export default class GitHubSyncPlugin extends Plugin {
 	settings!: GitHubSyncSettings;
@@ -187,7 +188,7 @@ export default class GitHubSyncPlugin extends Plugin {
 		if (!this.statusBarEl) return;
 		const dateStr =
 			this.settings.lastSyncTime > 0
-				? moment(this.settings.lastSyncTime).format('HH:mm:ss')
+				? getMoment(this.settings.lastSyncTime).format('HH:mm:ss')
 				: 'Never';
 
 		this.statusBarEl.empty();

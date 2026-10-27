@@ -1,4 +1,4 @@
-import { App, Notice, moment, TFile } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import { GitHubApiClient } from './github-api';
 import { GitHubSyncSettings, ConflictInfo } from './types';
 import {
@@ -9,6 +9,7 @@ import {
 	normalizeTextBuffer,
 	globToRegex,
 	normalizeFilePath,
+	getMoment,
 } from './utils';
 import { ConflictModal } from './conflict-modal';
 
@@ -737,7 +738,7 @@ export class SyncEngine {
 							: info.filePath;
 					const ext =
 						extIndex !== -1 ? info.filePath.slice(extIndex) : '';
-					const dateStr = moment().format('YYYY-MM-DD');
+					const dateStr = getMoment().format('YYYY-MM-DD');
 					const conflictPath = normalizeFilePath(
 						`${base} (Local Conflict ${dateStr})${ext}`,
 					);

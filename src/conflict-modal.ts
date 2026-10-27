@@ -1,5 +1,6 @@
-import { App, Modal, Setting, moment } from "obsidian";
+import { App, Modal, Setting } from "obsidian";
 import { ConflictInfo } from "./types";
+import { getMoment } from "./utils";
 
 export class ConflictModal extends Modal {
   private resolved = false;
@@ -38,7 +39,7 @@ export class ConflictModal extends Modal {
 
     const formatTime = (ts: number) => {
       if (ts <= 0) return "unknown";
-      const m = moment(ts);
+      const m = getMoment(ts);
       return `${m.fromNow()} (${m.format("YYYY-MM-DD HH:mm")})`;
     };
 

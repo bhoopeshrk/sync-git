@@ -1,5 +1,6 @@
-import { Modal, App, moment } from 'obsidian';
+import { Modal, App } from 'obsidian';
 import type { GitHubSyncSettings } from './types';
+import { getMoment } from './utils';
 
 export class SyncLogModal extends Modal {
 	constructor(
@@ -39,7 +40,7 @@ export class SyncLogModal extends Modal {
 			const row = table.createEl("tr");
 			
 			// Time
-			row.createEl("td", { text: moment(entry.timestamp).format("MM-DD HH:mm:ss") });
+			row.createEl("td", { text: getMoment(entry.timestamp).format("MM-DD HH:mm:ss") });
 			
 			// Host
 			row.createEl("td", { text: entry.hostname || "unknown" });
@@ -75,7 +76,7 @@ export class SyncLogModal extends Modal {
 		copyBtn.addEventListener("click", () => {
 			const text = logs.map(e => {
 				if (!e) return "";
-				const time = moment(e.timestamp).format("YYYY-MM-DD HH:mm:ss");
+				const time = getMoment(e.timestamp).format("YYYY-MM-DD HH:mm:ss");
 				const status = e.error ? `ERROR: ${e.error}` : `SUCCESS (up:${e.uploaded} down:${e.downloaded} conf:${e.conflicts})`;
 				return `[${time}] [${e.hostname}] [${e.mode}] ${status} (${e.duration}ms)`;
 			}).filter(t => t.length > 0).join("\n");

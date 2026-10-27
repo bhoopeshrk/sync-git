@@ -128,6 +128,10 @@ export class GitHubApiClient {
 		return (await this.request(`/repos/${this.username}/${repo}/git/trees/${treeSha}?recursive=1`)) as GitHubTree;
 	}
 
+	/**
+	 * Downloads a Git blob from GitHub and decodes its Base64 content into binary ArrayBuffer.
+	 * Uses window.atob strictly for decoding file payloads received from GET /repos/{owner}/{repo}/git/blobs/{file_sha}.
+	 */
 	async downloadBlob(repo: string, fileSha: string): Promise<ArrayBuffer> {
 		const blob = await this.request(`/repos/${this.username}/${repo}/git/blobs/${fileSha}`) as GitHubBlob;
 		const binaryString = window.atob(blob.content.replace(/\n/g, ''));

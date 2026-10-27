@@ -1,4 +1,13 @@
 import { moment, normalizePath } from 'obsidian';
+import type { Moment, MomentInput, MomentFormatSpecification } from 'moment';
+
+export type MomentFn = (
+	inp?: MomentInput,
+	format?: MomentFormatSpecification,
+	strict?: boolean,
+) => Moment;
+
+export const getMoment = moment as unknown as MomentFn;
 
 /**
  * Normalizes vault file paths: replaces backslashes/redundant slashes and applies Unicode NFC composition.
@@ -22,6 +31,10 @@ export async function calculateGitSha(buffer: ArrayBuffer): Promise<string> {
     .join('');
 }
 
+/**
+ * Converts a vault file ArrayBuffer to a Base64 string for GitHub's Git Blobs REST API.
+ * Uses window.btoa strictly for transmitting file content to POST /repos/{owner}/{repo}/git/blobs.
+ */
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -32,7 +45,7 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 export function generateCommitMessage(hostname: string, format: string, files: string[]): string {
-  const dateStr = moment().format(format);
+  const dateStr = getMoment().format(format);
   const host = hostname || 'Unknown-Device';
   const title = `Sync/Auto sync from ${host}: ${dateStr}`;
   const body = files.length > 0 ? `\n\nChanged files:\n${files.map(f => `- ${f}`).join('\n')}` : '';

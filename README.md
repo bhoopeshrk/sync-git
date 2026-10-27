@@ -74,6 +74,7 @@ No analytics, telemetry, or tracking data is collected or transmitted. Vault con
 
 - Your **Personal Access Token** is stored only in browser `localStorage` — it is never written into your vault folder or committed to any repository.
 - **Vault file contents** are only ever uploaded to the GitHub repository you configure. They are never sent to any third-party service.
+- **Base64 encoding/decoding (`btoa`/`atob`)**: Runtime Base64 conversions are used strictly for communicating with GitHub's Git Blobs REST API (`POST /git/blobs` to upload file bytes and `GET /git/blobs/:sha` to decode downloaded file bytes). No executable code, tokens, URLs, or scripts are obfuscated or dynamically evaluated at runtime.
 - The plugin operates entirely offline when no sync is triggered.
 
 ---
