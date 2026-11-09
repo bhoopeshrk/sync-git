@@ -94,10 +94,42 @@ npm run build
 
 ## Versioning & releases
 
-- Bump `version` in `manifest.json` (SemVer) and update `versions.json` to map plugin version → minimum app version.
-- Create a GitHub release whose tag exactly matches `manifest.json`'s `version`. Do not use a leading `v`.
-- Attach `manifest.json`, `main.js`, and `styles.css` (if present) to the release as individual assets.
-- After the initial release, follow the process to add/update your plugin in the community catalog as required.
+Always use the automated version bump workflow rather than manually editing version numbers across individual files.
+
+### Automated version bump workflow (`npm version`)
+
+1. **Verify build and linter passing**:
+   ```bash
+   npm run build
+   npm run lint
+   ```
+2. **Execute `npm version`**:
+   ```bash
+   npm version patch   # For bug fixes (e.g. 1.2.4 -> 1.2.5)
+   npm version minor   # For new backwards-compatible features (e.g. 1.2.4 -> 1.3.0)
+   npm version major   # For breaking changes (e.g. 1.2.4 -> 2.0.0)
+   ```
+   **How it works**:
+   - `npm version` updates the version in `package.json`.
+   - It sets `npm_package_version` in the environment and triggers the `"version"` lifecycle hook defined in `package.json`:
+     ```json
+     "version": "node version-bump.mjs && git add manifest.json versions.json"
+     ```
+   - [`version-bump.mjs`](file:///d:/FreeLance/MyWork/sync-git/version-bump.mjs) reads `process.env.npm_package_version`, synchronizes `manifest.json`'s `version`, and adds a new entry mapping the version to `minAppVersion` in `versions.json`.
+   - `npm version` stages all modified metadata files (`package.json`, `manifest.json`, `versions.json`), commits them with the version name, and generates a git tag (without a leading `v`).
+
+3. **Push to GitHub**:
+   ```bash
+   git push origin main --follow-tags
+   ```
+   Pushing the tag triggers `.github/workflows/release.yml`, which automatically compiles `main.js`, verifies assets, and publishes the GitHub release with `manifest.json`, `main.js`, and `styles.css`.
+
+### Versioning rules & guidelines
+
+- **No leading `v` in tags**: GitHub release tags must match `manifest.json`'s `version` exactly (e.g. `1.2.5`, not `v1.2.5`).
+- **Synchronized metadata**: `package.json`, `manifest.json`, and `versions.json` must always stay in sync. Running `npm version` guarantees this.
+- **Accurate `minAppVersion`**: Ensure `minAppVersion` in `manifest.json` accurately reflects the minimum Obsidian API required by any new features.
+- After the release asset is created, the community plugin directory will automatically pick up the update.
 
 ## Security, privacy, and compliance
 

@@ -288,7 +288,6 @@ export class GitHubSyncSettingTab extends PluginSettingTab {
 	// ─── Token Setting ────────────────────────────────────────
 
 	private renderTokenSetting(setting: Setting, mode: "classic" | "fine-grained"): void {
-		setting.settingEl.empty();
 		setting.settingEl.addClass("ghs-token-setting");
 
 		const label = mode === "classic" ? "Personal access token (classic)" : "Personal access token (fine-grained)";
@@ -341,7 +340,6 @@ export class GitHubSyncSettingTab extends PluginSettingTab {
 	// ─── Test Connection ──────────────────────────────────────
 
 	private renderTestConnectionSetting(setting: Setting): void {
-		setting.settingEl.empty();
 		setting.setName("Connection test").setDesc("Verify credentials and connection with GitHub API.");
 
 		let statusSpan: HTMLSpanElement | null = null;
@@ -353,7 +351,7 @@ export class GitHubSyncSettingTab extends PluginSettingTab {
 					if (statusSpan) {
 						statusSpan.remove();
 					}
-					statusSpan = setting.settingEl.createSpan({ cls: "ghs-test-status ghs-test-status-loading" });
+					statusSpan = setting.controlEl.createSpan({ cls: "ghs-test-status ghs-test-status-loading" });
 					setIcon(statusSpan, "refresh-cw");
 					statusSpan.createSpan({ text: " Testing..." });
 
@@ -372,11 +370,11 @@ export class GitHubSyncSettingTab extends PluginSettingTab {
 
 					statusSpan.remove();
 					if (result.success) {
-						statusSpan = setting.settingEl.createSpan({ cls: "ghs-test-status ghs-test-status-success" });
+						statusSpan = setting.controlEl.createSpan({ cls: "ghs-test-status ghs-test-status-success" });
 						setIcon(statusSpan, "check-circle");
 						statusSpan.createSpan({ text: ` ${result.message}` });
 					} else {
-						statusSpan = setting.settingEl.createSpan({ cls: "ghs-test-status ghs-test-status-error" });
+						statusSpan = setting.controlEl.createSpan({ cls: "ghs-test-status ghs-test-status-error" });
 						setIcon(statusSpan, "alert-triangle");
 						statusSpan.createSpan({ text: ` Failed: ${result.message}` });
 					}

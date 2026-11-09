@@ -79,6 +79,37 @@ No analytics, telemetry, or tracking data is collected or transmitted. Vault con
 
 ---
 
+## Development and releases
+
+### Building from source
+
+```bash
+npm install
+npm run dev    # Start compilation in watch mode
+npm run build  # Production build (type-check and bundle into main.js)
+npm run lint   # Run Obsidian-specific ESLint rules
+```
+
+### Version bumping
+
+This repository uses an automated version bump script (`version-bump.mjs`) wired to npm's `version` lifecycle hook:
+
+```bash
+npm version patch   # Bug fixes (e.g. 1.2.4 -> 1.2.5)
+npm version minor   # Backwards-compatible features
+npm version major   # Breaking changes
+```
+
+Running `npm version` updates `package.json`, invokes `version-bump.mjs` to synchronize `manifest.json` and `versions.json`, creates the git commit, and tags the release (without a leading `v`, as required by Obsidian).
+
+To publish the release:
+```bash
+git push origin main --follow-tags
+```
+GitHub Actions will automatically build production assets (`main.js`, `manifest.json`, `styles.css`) and attach them to the release.
+
+---
+
 ## License
 
 MIT © Bhoopesh R K
