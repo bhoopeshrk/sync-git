@@ -27,6 +27,7 @@
 		"esbuild@0.25.5": true
 	},
 	"overrides": {
-		"moment": "^2.31.0"
+		"moment": "^2.31.0",
+		"minimatch": "^11.0.5"
 	}
 }
