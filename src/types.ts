@@ -42,6 +42,8 @@ export interface GitHubSyncSettings {
   autoSyncEnabled: boolean;
   lastSyncState: Record<string, string>;
   localHashCache: Record<string, LocalHashCacheItem>;
+  /** Bumped when the hashing/normalization rules change, to invalidate localHashCache. */
+  localHashCacheVersion?: number;
   githubApiUrl: string;
   lastSyncTime: number;
   syncLog: SyncLogEntry[];

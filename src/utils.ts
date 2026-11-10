@@ -71,9 +71,18 @@ export function isTextFile(path: string): boolean {
 }
 
 export function normalizeTextBuffer(buffer: ArrayBuffer): ArrayBuffer {
-  const text = new TextDecoder('utf-8').decode(buffer);
-  const normalized = text.replace(/\r\n/g, '\n');
-  return new TextEncoder().encode(normalized).buffer;
+	// Like git, treat content containing NUL bytes as binary.
+	if (new Uint8Array(buffer).includes(0)) return buffer;
+	let text: string;
+	try {
+		// fatal: never replace invalid sequences with U+FFFD (that corrupts
+		// binary files); ignoreBOM: keep a UTF-8 BOM instead of dropping it.
+		text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer);
+	} catch {
+		return buffer;
+	}
+	if (!text.includes('\r\n')) return buffer;
+	return new TextEncoder().encode(text.replace(/\r\n/g, '\n')).buffer;
 }
 
 export function globToRegex(glob: string): RegExp {

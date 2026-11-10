@@ -148,8 +148,14 @@ export class SyncEngine {
 					localFileMap.set(normPath, file);
 				}
 
-				if (!this.settings.localHashCache || force) {
+				// Version 1: hashes computed with byte-preserving normalizeTextBuffer.
+				if (
+					!this.settings.localHashCache ||
+					force ||
+					this.settings.localHashCacheVersion !== 1
+				) {
 					this.settings.localHashCache = {};
+					this.settings.localHashCacheVersion = 1;
 				}
 
 				for (const [normPath, file] of localFileMap.entries()) {
