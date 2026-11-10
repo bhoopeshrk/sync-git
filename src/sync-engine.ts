@@ -213,7 +213,10 @@ export class SyncEngine {
 					try {
 						if (await this.app.vault.adapter.exists(path)) {
 							const stat = await this.app.vault.adapter.stat(path);
-							if (stat && stat.type === 'file') {
+							if (!stat || stat.type !== 'file') {
+								throw new Error(`Cannot determine local file state: ${path}`);
+							}
+							if (stat.type === 'file') {
 								if (stat.size > 25 * 1024 * 1024) {
 									skippedFiles.push(path);
 									continue;
@@ -248,8 +251,9 @@ export class SyncEngine {
 								}
 							}
 						}
-					} catch {
-						// Ignore unindexed read error
+					} catch (error: unknown) {
+						const detail = error instanceof Error ? error.message : String(error);
+						throw new Error(`Failed checking local file "${path}": ${detail}`);
 					}
 				}
 
@@ -300,6 +304,7 @@ export class SyncEngine {
 				]);
 
 				for (const path of allPaths) {
+					if (skippedFiles.includes(path)) continue;
 					const localFile = localFileMap.get(path);
 					const remoteSize = remoteSizes.get(path) || 0;
 					const isLocalTooLarge =
