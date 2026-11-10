@@ -80,7 +80,7 @@ Best for users who prefer strict, repo-scoped permissions or corporate security 
 
 | Setting | Description |
 | :--- | :--- |
-| **Auto pull on startup** | Automatically pull remote changes when Obsidian opens. |
+| **Auto sync on startup** | Run a full bidirectional sync when Obsidian opens, including uploads, downloads, and deletions. Independent of periodic auto sync. |
 | **Auto sync enabled** | Periodically commit local changes and pull remote updates. |
 | **Sync frequency** | Choose the background sync interval (Every 1, 5, 15, 30, 60 minutes, 12 hours, 24 hours, or Disabled). |
 

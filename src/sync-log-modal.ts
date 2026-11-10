@@ -52,6 +52,10 @@ export class SyncLogModal extends Modal {
 			const statusTd = row.createEl("td");
 			if (entry.error) {
 				statusTd.createSpan({ text: "Error", cls: "ghs-badge ghs-badge-error" });
+			} else if (entry.unresolvedConflicts) {
+				statusTd.createSpan({ text: "Unresolved conflicts", cls: "ghs-badge ghs-badge-error" });
+			} else if (entry.skipped > 0) {
+				statusTd.createSpan({ text: "Partial", cls: "ghs-badge ghs-badge-error" });
 			} else {
 				statusTd.createSpan({ text: "Success", cls: "ghs-badge ghs-badge-success" });
 			}
@@ -77,7 +81,9 @@ export class SyncLogModal extends Modal {
 			const text = logs.map(e => {
 				if (!e) return "";
 				const time = getMoment(e.timestamp).format("YYYY-MM-DD HH:mm:ss");
-				const status = e.error ? `ERROR: ${e.error}` : `SUCCESS (up:${e.uploaded} down:${e.downloaded} conf:${e.conflicts})`;
+				const status = e.error
+					? `ERROR: ${e.error}`
+					: `${e.unresolvedConflicts ? `UNRESOLVED CONFLICTS: ${e.unresolvedConflicts}` : e.skipped > 0 ? "PARTIAL" : "SUCCESS"} (up:${e.uploaded} down:${e.downloaded} conf:${e.conflicts} skipped:${e.skipped})`;
 				return `[${time}] [${e.hostname}] [${e.mode}] ${status} (${e.duration}ms)`;
 			}).filter(t => t.length > 0).join("\n");
 			void navigator.clipboard.writeText(text).then(() => {

@@ -28,7 +28,7 @@ export default class GitHubSyncPlugin extends Plugin {
 		this.initEngine();
 
 		this.statusBarEl = this.addStatusBarItem();
-		this.updateStatusBar(this.canSync() ? 'offline' : 'needs-setup');
+		this.updateStatusBar(this.canSync() ? 'ready' : 'needs-setup');
 
 		this.addSettingTab(new GitHubSyncSettingTab(this.app, this));
 
@@ -100,7 +100,10 @@ export default class GitHubSyncPlugin extends Plugin {
 	}
 
 	async triggerSync(isAuto = false, force = false) {
-		if (this.syncing) return;
+		if (this.syncing) {
+			if (!isAuto) new Notice('GitHub sync: A sync is already in progress.');
+			return;
+		}
 		if (isAuto && typeof navigator !== 'undefined' && !navigator.onLine) {
 			this.updateStatusBar('offline');
 			return;
@@ -133,8 +136,10 @@ export default class GitHubSyncPlugin extends Plugin {
 			);
 			this.settings.lastSyncTime = Date.now();
 			await this.saveSettings();
-			if (result.conflicts > 0) {
-				this.updateStatusBar('error', `${result.conflicts} conflict${result.conflicts > 1 ? 's' : ''} detected. Run manual sync.`);
+			if (result.unresolvedConflicts > 0) {
+				this.updateStatusBar('error', `${result.unresolvedConflicts} conflict${result.unresolvedConflicts > 1 ? 's' : ''} detected. Run manual sync.`);
+			} else if (result.skipped > 0) {
+				this.updateStatusBar('partial', `${result.skipped} file(s) skipped. See sync log.`);
 			} else {
 				this.updateStatusBar('idle');
 			}
@@ -146,6 +151,7 @@ export default class GitHubSyncPlugin extends Plugin {
 				uploaded: result.uploaded,
 				downloaded: result.downloaded,
 				conflicts: result.conflicts,
+				unresolvedConflicts: result.unresolvedConflicts,
 				skipped: result.skipped,
 				duration: result.duration,
 			};
@@ -182,7 +188,7 @@ export default class GitHubSyncPlugin extends Plugin {
 	}
 
 	updateStatusBar(
-		status: 'idle' | 'syncing' | 'error' | 'offline' | 'needs-setup',
+		status: 'ready' | 'partial' | 'idle' | 'syncing' | 'error' | 'offline' | 'needs-setup',
 		detail = '',
 	) {
 		if (!this.statusBarEl) return;
@@ -215,6 +221,12 @@ export default class GitHubSyncPlugin extends Plugin {
 					void this.openSettings();
 				};
 				break;
+			case 'ready':
+				setIcon(iconEl, 'cloud');
+				textEl.setText(' Not checked');
+				this.statusBarEl.title = 'GitHub sync: Not checked this session. Click to sync now.';
+				this.statusBarEl.onclick = () => { void this.triggerSync(false); };
+				break;
 			case 'idle':
 				setIcon(iconEl, 'cloud');
 				textEl.setText(' Synced');
@@ -227,9 +239,9 @@ export default class GitHubSyncPlugin extends Plugin {
 			case 'syncing':
 				setIcon(iconEl, 'refresh-cw');
 				iconEl.addClass('ghs-spin');
-				textEl.setText(' Syncing...');
+				textEl.setText(detail ? ` ${detail}` : ' Syncing...');
 				this.statusBarEl.addClass('ghs-status-syncing');
-				this.statusBarEl.title = 'GitHub sync: Sync in progress...';
+				this.statusBarEl.title = detail ? `GitHub sync: ${detail}` : 'GitHub sync: Sync in progress...';
 				break;
 			case 'offline':
 				setIcon(iconEl, 'cloud-off');
@@ -240,6 +252,13 @@ export default class GitHubSyncPlugin extends Plugin {
 				this.statusBarEl.onclick = () => {
 					this.openSyncLog();
 				};
+				break;
+			case 'partial':
+				setIcon(iconEl, 'alert-triangle');
+				textEl.setText(' Partially synced');
+				this.statusBarEl.addClass('ghs-status-error');
+				this.statusBarEl.title = `GitHub sync: Incomplete. ${detail}`;
+				this.statusBarEl.onclick = () => { this.openSyncLog(); };
 				break;
 			case 'error':
 				setIcon(iconEl, 'alert-triangle');

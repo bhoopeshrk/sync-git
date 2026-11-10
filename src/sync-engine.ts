@@ -18,6 +18,7 @@ export interface SyncResult {
 	uploaded: number;
 	downloaded: number;
 	conflicts: number;
+	unresolvedConflicts: number;
 	skipped: number;
 	duration: number;
 }
@@ -114,6 +115,7 @@ export class SyncEngine {
 			try {
 				const skippedFiles: string[] = [];
 				let conflicts = 0;
+				let unresolvedConflicts = 0;
 				const repo = await this.getRepoName();
 				const latestCommitSha = await this.api.getLatestCommitSha(repo);
 				const remoteTree = await this.api.getTree(
@@ -351,6 +353,7 @@ export class SyncEngine {
 						} else {
 							if (isAuto) {
 								conflicts++;
+								unresolvedConflicts++;
 								continue;
 							}
 							if (remoteSha) {
@@ -428,11 +431,12 @@ export class SyncEngine {
 									localContentPreview,
 									remoteContentPreview,
 								};
-								await this.promptConflictResolution(
+								const resolved = await this.promptConflictResolution(
 									conflictInfo,
 									filesToUpload,
 									filesToDownload,
 								);
+								if (!resolved) unresolvedConflicts++;
 								conflicts++;
 							}
 						}
@@ -666,7 +670,7 @@ export class SyncEngine {
 					}
 
 					if (conflicts > 0) {
-						msg += `\n\u26a0\ufe0f ${conflicts} conflict${conflicts > 1 ? 's' : ''} resolved.`;
+						msg += `\n\u26a0\ufe0f ${conflicts} conflict${conflicts > 1 ? 's' : ''} encountered (${unresolvedConflicts} unresolved).`;
 					}
 					if (skippedFiles.length > 0) {
 						msg += `\n\u26a0\ufe0f Skipped ${skippedFiles.length} file(s) exceeding 25MB limit.`;
@@ -686,6 +690,7 @@ export class SyncEngine {
 					uploaded: filesToUpload.length,
 					downloaded: filesToDownload.length,
 					conflicts,
+					unresolvedConflicts,
 					skipped: skippedFiles.length,
 					duration: Date.now() - startTime,
 				};
@@ -710,6 +715,7 @@ export class SyncEngine {
 			uploaded: 0,
 			downloaded: 0,
 			conflicts: 0,
+			unresolvedConflicts: 0,
 			skipped: 0,
 			duration: Date.now() - startTime,
 		};
@@ -719,15 +725,15 @@ export class SyncEngine {
 		info: ConflictInfo,
 		filesToUpload: string[],
 		filesToDownload: string[],
-	): Promise<void> {
-		return new Promise<void>((resolve) => {
+	): Promise<boolean> {
+		return new Promise<boolean>((resolve) => {
 			new ConflictModal(this.app, info, (choice) => {
 				if (choice === 'local') {
 					filesToUpload.push(info.filePath);
-					resolve();
+					resolve(true);
 				} else if (choice === 'remote') {
 					filesToDownload.push(info.filePath);
-					resolve();
+					resolve(true);
 				} else if (choice === 'both') {
 					const normalizedPath = normalizeFilePath(info.filePath);
 					const file = this.getFileFromVault(normalizedPath);
@@ -747,24 +753,24 @@ export class SyncEngine {
 							.rename(file, conflictPath)
 							.then(() => {
 								filesToDownload.push(info.filePath);
-								resolve();
+								resolve(true);
 							})
 							.catch(() => {
 								new Notice(
 									`Failed to rename conflict file: ${info.filePath}. Skipping download to preserve local changes.`,
 								);
-								resolve();
+								resolve(false);
 							});
 					} else {
 						void this.app.vault.adapter
 							.rename(normalizedPath, conflictPath)
 							.then(() => {
 								filesToDownload.push(info.filePath);
-								resolve();
+								resolve(true);
 							})
 							.catch(() => {
 								filesToDownload.push(info.filePath);
-								resolve();
+								resolve(false);
 							});
 					}
 				}

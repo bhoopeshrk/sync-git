@@ -25,6 +25,7 @@ export interface SyncLogEntry {
   uploaded: number;
   downloaded: number;
   conflicts: number;
+  unresolvedConflicts?: number;
   skipped: number;
   duration: number;
   error?: string;
