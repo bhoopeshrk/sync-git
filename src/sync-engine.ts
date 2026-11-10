@@ -763,7 +763,9 @@ export class SyncEngine {
 								resolve();
 							})
 							.catch(() => {
-								filesToDownload.push(info.filePath);
+								new Notice(
+									`Failed to rename conflict file: ${info.filePath}. Skipping download to preserve local changes.`,
+								);
 								resolve();
 							});
 					}
