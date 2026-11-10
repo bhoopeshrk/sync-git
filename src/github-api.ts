@@ -42,11 +42,20 @@ export class GitHubApiClient {
 				...options.headers,
 			},
 			body: options.body,
+			throw: false,
 		});
 
-		if (response.status === 403) {
+		if (response.status === 403 || response.status === 429) {
+			// Secondary rate limits: 403/429 with retry-after (seconds), quota may be left.
+			const retryAfter = Number(response.headers['retry-after']);
+			if (retryAfter > 0 || /rate limit/i.test(response.text)) {
+				const waitMin = Math.max(1, Math.ceil((retryAfter || 60) / 60));
+				throw new Error(`GitHub API rate limited. Resuming in ~${waitMin} minute${waitMin === 1 ? '' : 's'}.`);
+			}
+			// Primary rate limit: x-ratelimit-reset is sent on every response, so
+			// only an exhausted quota means the request was rate limited.
 			const reset = response.headers['x-ratelimit-reset'];
-			if (reset) {
+			if (reset && response.headers['x-ratelimit-remaining'] === '0') {
 				const resetMs = Number(reset) * 1000;
 				const waitMin = Math.max(0, Math.ceil((resetMs - Date.now()) / 60000));
 				throw new Error(`GitHub API rate limited. Resuming in ~${waitMin} minute${waitMin === 1 ? '' : 's'}.`);
@@ -77,8 +86,7 @@ export class GitHubApiClient {
 		try {
 			await this.request(`/repos/${this.username}/${repo}`);
 		} catch (e: unknown) {
-			const message = e instanceof Error ? e.message : String(e);
-			if (message.includes('404')) {
+			if (e instanceof GitHubApiError && e.status === 404) {
 				await this.request('/user/repos', {
 					method: 'POST',
 					body: JSON.stringify({ name: repo, private: true, auto_init: true }),
@@ -191,7 +199,7 @@ export class GitHubApiClient {
 
 	async getFileLastModified(repo: string, path: string): Promise<number> {
 		try {
-			const commits = await this.request(`/repos/${this.username}/${repo}/commits?path=${encodeURIComponent(path)}&page=1&per_page=1`) as { commit: { committer: { date: string } } }[];
+			const commits = await this.request(`/repos/${this.username}/${repo}/commits?path=${encodeURIComponent(path)}&sha=main&page=1&per_page=1`) as { commit: { committer: { date: string } } }[];
 			if (commits && commits.length > 0) {
 				const firstCommit = commits[0];
 				if (firstCommit && firstCommit.commit && firstCommit.commit.committer) {
