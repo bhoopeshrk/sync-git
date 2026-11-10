@@ -257,9 +257,12 @@ export default class GitHubSyncPlugin extends Plugin {
 
 	setupScheduler() {
 		if (this.syncIntervalId) window.clearInterval(this.syncIntervalId);
-		if (this.settings.syncFrequencyMinutes > 0) {
+		this.syncIntervalId = null;
+		if (this.settings.autoSyncEnabled && this.settings.syncFrequencyMinutes > 0) {
 			this.syncIntervalId = window.setInterval(
-				() => void this.triggerSync(true),
+				() => {
+					if (this.settings.autoSyncEnabled) void this.triggerSync(true);
+				},
 				this.settings.syncFrequencyMinutes * 60 * 1000,
 			);
 		}
