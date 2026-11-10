@@ -79,7 +79,7 @@ export class SyncEngine {
 	private isIgnored(path: string): boolean {
 		const normPath = normalizeFilePath(path);
 		const configDir = this.app.vault.configDir;
-		if (normPath.startsWith(`${configDir}/`) || normPath.includes('.trash'))
+		if (normPath.startsWith(`${configDir}/`) || normPath.split('/').includes('.trash'))
 			return true;
 
 		for (const regex of this.ignoreRegexes) {
