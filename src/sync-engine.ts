@@ -578,7 +578,6 @@ export class SyncEngine {
 							type: 'blob',
 							sha: newBlobSha,
 						});
-						this.settings.lastSyncState[path] = newBlobSha;
 						changedFileNames.push(path.split('/').pop()!);
 						stateChanged = true;
 					}
@@ -590,7 +589,6 @@ export class SyncEngine {
 							type: 'blob',
 							sha: null,
 						});
-						delete this.settings.lastSyncState[path];
 						changedFileNames.push(
 							`Deleted: ${path.split('/').pop()}`,
 						);
@@ -610,6 +608,14 @@ export class SyncEngine {
 						remoteTree.sha,
 						latestCommitSha,
 					);
+					// Blobs are synchronized only after the commit/ref update succeeds.
+					for (const item of treePayload) {
+						if (item.sha === null) {
+							delete this.settings.lastSyncState[item.path];
+						} else {
+							this.settings.lastSyncState[item.path] = item.sha;
+						}
+					}
 				}
 
 				if (
