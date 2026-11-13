@@ -14,6 +14,8 @@ export default defineConfig(
 		'package.json',
 		'package-lock.json',
 		'tsconfig.json',
+		// Offline Node regression tests (run with `npm test`), not plugin code.
+		'tests/**/*.cjs',
 	]),
 	{
 		languageOptions: {

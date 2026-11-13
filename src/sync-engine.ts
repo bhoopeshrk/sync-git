@@ -1,6 +1,10 @@
 import { App, Notice, TFile } from 'obsidian';
 import { GitHubApiClient } from './github-api';
-import { GitHubSyncSettings, ConflictInfo } from './types';
+import {
+	GitHubSyncSettings,
+	ConflictInfo,
+	LOCAL_HASH_CACHE_VERSION,
+} from './types';
 import {
 	calculateGitSha,
 	arrayBufferToBase64,
@@ -18,6 +22,10 @@ export interface SyncResult {
 	uploaded: number;
 	downloaded: number;
 	conflicts: number;
+	/** Conflicts that are still open after the sync. */
+	unresolvedConflicts: number;
+	/** Files whose local state could not be determined; left untouched. */
+	unreadable: number;
 	skipped: number;
 	duration: number;
 }
@@ -79,8 +87,10 @@ export class SyncEngine {
 	private isIgnored(path: string): boolean {
 		const normPath = normalizeFilePath(path);
 		const configDir = this.app.vault.configDir;
-		if (normPath.startsWith(`${configDir}/`) || normPath.includes('.trash'))
-			return true;
+		// `.trash` is Obsidian's trash folder: exclude it only when it is a whole
+		// path segment, so that files such as `ideas.trash.md` still sync.
+		const isTrash = normPath.split('/').includes('.trash');
+		if (normPath.startsWith(`${configDir}/`) || isTrash) return true;
 
 		for (const regex of this.ignoreRegexes) {
 			if (regex.test(normPath)) return true;
@@ -113,7 +123,11 @@ export class SyncEngine {
 		while (retries > 0) {
 			try {
 				const skippedFiles: string[] = [];
+				const skippedPaths = new Set<string>();
+				const unreadableFiles: { path: string; reason: string }[] = [];
+				const unreadablePaths = new Set<string>();
 				let conflicts = 0;
+				let unresolvedConflicts = 0;
 				const repo = await this.getRepoName();
 				const latestCommitSha = await this.api.getLatestCommitSha(repo);
 				const remoteTree = await this.api.getTree(
@@ -148,13 +162,23 @@ export class SyncEngine {
 					localFileMap.set(normPath, file);
 				}
 
-				if (!this.settings.localHashCache || force) {
+				if (
+					!this.settings.localHashCache ||
+					force ||
+					this.settings.localHashCacheVersion !== LOCAL_HASH_CACHE_VERSION
+				) {
+					// The hashing rules changed: cached hashes were computed
+					// under the old rules and must not be compared to the
+					// remote. `lastSyncState` is kept, so only files whose
+					// bytes actually changed are uploaded again.
 					this.settings.localHashCache = {};
+					this.settings.localHashCacheVersion = LOCAL_HASH_CACHE_VERSION;
 				}
 
 				for (const [normPath, file] of localFileMap.entries()) {
 					if (file.stat.size > 25 * 1024 * 1024) {
 						skippedFiles.push(normPath);
+						skippedPaths.add(normPath);
 						continue;
 					}
 					const cache = !force
@@ -213,43 +237,56 @@ export class SyncEngine {
 					try {
 						if (await this.app.vault.adapter.exists(path)) {
 							const stat = await this.app.vault.adapter.stat(path);
-							if (stat && stat.type === 'file') {
-								if (stat.size > 25 * 1024 * 1024) {
-									skippedFiles.push(path);
-									continue;
-								}
-								const cache = !force
-									? this.settings.localHashCache[path]
-									: undefined;
-								const mtime = stat.mtime;
-								const size = stat.size;
+							if (!stat || stat.type !== 'file') {
+								throw new Error(
+									'local file state could not be determined',
+								);
+							}
+							if (stat.size > 25 * 1024 * 1024) {
+								skippedFiles.push(path);
+								skippedPaths.add(path);
+								continue;
+							}
+							const cache = !force
+								? this.settings.localHashCache[path]
+								: undefined;
+							const mtime = stat.mtime;
+							const size = stat.size;
 
-								if (
-									cache &&
-									cache.mtime === mtime &&
-									cache.size === size
-								) {
-									localHashes.set(path, cache.sha);
-								} else {
-									let buffer =
-										await this.app.vault.adapter.readBinary(
-											path,
-										);
-									if (isTextFile(path)) {
-										buffer = normalizeTextBuffer(buffer);
-									}
-									const sha = await calculateGitSha(buffer);
-									localHashes.set(path, sha);
-									this.settings.localHashCache[path] = {
-										mtime,
-										size,
-										sha,
-									};
+							if (
+								cache &&
+								cache.mtime === mtime &&
+								cache.size === size
+							) {
+								localHashes.set(path, cache.sha);
+							} else {
+								let buffer =
+									await this.app.vault.adapter.readBinary(
+										path,
+									);
+								if (isTextFile(path)) {
+									buffer = normalizeTextBuffer(buffer);
 								}
+								const sha = await calculateGitSha(buffer);
+								localHashes.set(path, sha);
+								this.settings.localHashCache[path] = {
+									mtime,
+									size,
+									sha,
+								};
 							}
 						}
-					} catch {
-						// Ignore unindexed read error
+					} catch (error: unknown) {
+						// Fail closed. We cannot tell whether the file still exists
+						// locally, so it must not be treated as deleted: that would
+						// remove it from the remote and from every other device.
+						// Keep the previous sync state and retry on the next sync.
+						const reason =
+							error instanceof Error
+								? error.message
+								: String(error);
+						unreadablePaths.add(path);
+						unreadableFiles.push({ path, reason });
 					}
 				}
 
@@ -300,6 +337,12 @@ export class SyncEngine {
 				]);
 
 				for (const path of allPaths) {
+					// A file that was skipped (too large) or could not be read must
+					// never be acted on: treating it as absent would delete it from
+					// the remote and from every other device.
+					if (skippedPaths.has(path) || unreadablePaths.has(path)) {
+						continue;
+					}
 					const localFile = localFileMap.get(path);
 					const remoteSize = remoteSizes.get(path) || 0;
 					const isLocalTooLarge =
@@ -309,6 +352,7 @@ export class SyncEngine {
 					if (isLocalTooLarge || isRemoteTooLarge) {
 						if (!skippedFiles.includes(path)) {
 							skippedFiles.push(path);
+							skippedPaths.add(path);
 						}
 						continue;
 					}
@@ -351,6 +395,7 @@ export class SyncEngine {
 						} else {
 							if (isAuto) {
 								conflicts++;
+								unresolvedConflicts++;
 								continue;
 							}
 							if (remoteSha) {
@@ -428,11 +473,12 @@ export class SyncEngine {
 									localContentPreview,
 									remoteContentPreview,
 								};
-								await this.promptConflictResolution(
+								const resolved = await this.promptConflictResolution(
 									conflictInfo,
 									filesToUpload,
 									filesToDownload,
 								);
+								if (!resolved) unresolvedConflicts++;
 								conflicts++;
 							}
 						}
@@ -578,9 +624,7 @@ export class SyncEngine {
 							type: 'blob',
 							sha: newBlobSha,
 						});
-						this.settings.lastSyncState[path] = newBlobSha;
 						changedFileNames.push(path.split('/').pop()!);
-						stateChanged = true;
 					}
 
 					for (const path of filesToDeleteRemotely) {
@@ -590,11 +634,9 @@ export class SyncEngine {
 							type: 'blob',
 							sha: null,
 						});
-						delete this.settings.lastSyncState[path];
 						changedFileNames.push(
 							`Deleted: ${path.split('/').pop()}`,
 						);
-						stateChanged = true;
 					}
 
 					const commitMessage = generateCommitMessage(
@@ -610,6 +652,18 @@ export class SyncEngine {
 						remoteTree.sha,
 						latestCommitSha,
 					);
+					// The remote only holds the new content once the commit
+					// succeeded. Recording the state any earlier would make the
+					// next sync believe the local edits were pushed, and
+					// overwrite them with the older remote version.
+					for (const item of treePayload) {
+						if (item.sha === null) {
+							delete this.settings.lastSyncState[item.path];
+						} else {
+							this.settings.lastSyncState[item.path] = item.sha;
+						}
+						stateChanged = true;
+					}
 				}
 
 				if (
@@ -666,10 +720,21 @@ export class SyncEngine {
 					}
 
 					if (conflicts > 0) {
-						msg += `\n\u26a0\ufe0f ${conflicts} conflict${conflicts > 1 ? 's' : ''} resolved.`;
+						msg += `\n\u26a0\ufe0f ${conflicts} conflict${conflicts > 1 ? 's' : ''} encountered (${unresolvedConflicts} unresolved).`;
 					}
 					if (skippedFiles.length > 0) {
 						msg += `\n\u26a0\ufe0f Skipped ${skippedFiles.length} file(s) exceeding 25MB limit.`;
+					}
+					if (unreadableFiles.length > 0) {
+						const shown = unreadableFiles
+							.slice(0, 3)
+							.map((f) => f.path)
+							.join(', ');
+						const extra =
+							unreadableFiles.length > 3
+								? ` (+${unreadableFiles.length - 3} more)`
+								: '';
+						msg += `\n\u26a0\ufe0f Could not read ${unreadableFiles.length} file(s) locally, left unchanged: ${shown}${extra}`;
 					}
 					msg += `\n(in ${duration}s)`;
 					new Notice(msg);
@@ -686,6 +751,8 @@ export class SyncEngine {
 					uploaded: filesToUpload.length,
 					downloaded: filesToDownload.length,
 					conflicts,
+					unresolvedConflicts,
+					unreadable: unreadableFiles.length,
 					skipped: skippedFiles.length,
 					duration: Date.now() - startTime,
 				};
@@ -710,6 +777,8 @@ export class SyncEngine {
 			uploaded: 0,
 			downloaded: 0,
 			conflicts: 0,
+			unresolvedConflicts: 0,
+			unreadable: 0,
 			skipped: 0,
 			duration: Date.now() - startTime,
 		};
@@ -719,15 +788,15 @@ export class SyncEngine {
 		info: ConflictInfo,
 		filesToUpload: string[],
 		filesToDownload: string[],
-	): Promise<void> {
-		return new Promise<void>((resolve) => {
+	): Promise<boolean> {
+		return new Promise<boolean>((resolve) => {
 			new ConflictModal(this.app, info, (choice) => {
 				if (choice === 'local') {
 					filesToUpload.push(info.filePath);
-					resolve();
+					resolve(true);
 				} else if (choice === 'remote') {
 					filesToDownload.push(info.filePath);
-					resolve();
+					resolve(true);
 				} else if (choice === 'both') {
 					const normalizedPath = normalizeFilePath(info.filePath);
 					const file = this.getFileFromVault(normalizedPath);
@@ -742,31 +811,27 @@ export class SyncEngine {
 					const conflictPath = normalizeFilePath(
 						`${base} (Local Conflict ${dateStr})${ext}`,
 					);
-					if (file) {
-						void this.app.vault
-							.rename(file, conflictPath)
-							.then(() => {
-								filesToDownload.push(info.filePath);
-								resolve();
-							})
-							.catch(() => {
-								new Notice(
-									`Failed to rename conflict file: ${info.filePath}. Skipping download to preserve local changes.`,
-								);
-								resolve();
-							});
-					} else {
-						void this.app.vault.adapter
-							.rename(normalizedPath, conflictPath)
-							.then(() => {
-								filesToDownload.push(info.filePath);
-								resolve();
-							})
-							.catch(() => {
-								filesToDownload.push(info.filePath);
-								resolve();
-							});
-					}
+					const renaming = file
+						? this.app.vault.rename(file, conflictPath)
+						: this.app.vault.adapter.rename(
+								normalizedPath,
+								conflictPath,
+							);
+					void renaming
+						.then(() => {
+							filesToDownload.push(info.filePath);
+							resolve(true);
+						})
+						.catch(() => {
+							// The local file is the only surviving copy of the
+							// user's changes. Overwriting it with the remote
+							// version would lose them, so the download is
+							// skipped and the conflict stays unresolved.
+							new Notice(
+								`Failed to rename conflict file: ${info.filePath}. Skipping download to preserve local changes.`,
+							);
+							resolve(false);
+						});
 				}
 			}).open();
 		});
