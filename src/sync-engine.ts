@@ -619,9 +619,7 @@ export class SyncEngine {
 							type: 'blob',
 							sha: newBlobSha,
 						});
-						this.settings.lastSyncState[path] = newBlobSha;
 						changedFileNames.push(path.split('/').pop()!);
-						stateChanged = true;
 					}
 
 					for (const path of filesToDeleteRemotely) {
@@ -630,12 +628,10 @@ export class SyncEngine {
 							mode: '100644',
 							type: 'blob',
 							sha: null,
-						});
-						delete this.settings.lastSyncState[path];
+							});
 						changedFileNames.push(
 							`Deleted: ${path.split('/').pop()}`,
 						);
-						stateChanged = true;
 					}
 
 					const commitMessage = generateCommitMessage(
@@ -650,7 +646,19 @@ export class SyncEngine {
 						treePayload,
 						remoteTree.sha,
 						latestCommitSha,
-					);
+						);
+					// The remote only holds the new content once the commit
+					// succeeded. Recording the state any earlier would make the
+					// next sync believe the local edits were pushed, and
+					// overwrite them with the older remote version.
+					for (const item of treePayload) {
+						if (item.sha === null) {
+							delete this.settings.lastSyncState[item.path];
+						} else {
+							this.settings.lastSyncState[item.path] = item.sha;
+						}
+						stateChanged = true;
+					}
 				}
 
 				if (
