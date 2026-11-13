@@ -1,6 +1,10 @@
 import { App, Notice, TFile } from 'obsidian';
 import { GitHubApiClient } from './github-api';
-import { GitHubSyncSettings, ConflictInfo } from './types';
+import {
+	GitHubSyncSettings,
+	ConflictInfo,
+	LOCAL_HASH_CACHE_VERSION,
+} from './types';
 import {
 	calculateGitSha,
 	arrayBufferToBase64,
@@ -155,8 +159,17 @@ export class SyncEngine {
 					localFileMap.set(normPath, file);
 				}
 
-				if (!this.settings.localHashCache || force) {
+				if (
+					!this.settings.localHashCache ||
+					force ||
+					this.settings.localHashCacheVersion !== LOCAL_HASH_CACHE_VERSION
+				) {
+					// The hashing rules changed: cached hashes were computed
+					// under the old rules and must not be compared to the
+					// remote. `lastSyncState` is kept, so only files whose
+					// bytes actually changed are uploaded again.
 					this.settings.localHashCache = {};
+					this.settings.localHashCacheVersion = LOCAL_HASH_CACHE_VERSION;
 				}
 
 				for (const [normPath, file] of localFileMap.entries()) {

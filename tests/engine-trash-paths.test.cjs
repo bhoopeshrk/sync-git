@@ -18,6 +18,7 @@ function engine() {
 		require(name) {
 			if (name === './utils')
 				return { normalizeFilePath: (path) => path.replace(/\\/g, '/').normalize('NFC') };
+			if (name === './types') return { LOCAL_HASH_CACHE_VERSION: 1 };
 			if (['obsidian', './github-api', './conflict-modal'].includes(name)) return {};
 			throw new Error('Unexpected import: ' + name);
 		},

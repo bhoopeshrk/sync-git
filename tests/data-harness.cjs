@@ -40,11 +40,13 @@ function load(name) {
 			? obsidian
 			: id === './utils'
 				? load('utils')
-				: id === './conflict-modal'
-					? { ConflictModal }
-					: (() => {
-							throw Error('Unexpected import ' + id);
-						})();
+				: id === './types'
+					? load('types')
+					: id === './conflict-modal'
+						? { ConflictModal }
+						: (() => {
+								throw Error('Unexpected import ' + id);
+							})();
 	vm.runInNewContext(
 		code,
 		{
