@@ -18,6 +18,8 @@ export interface SyncResult {
 	uploaded: number;
 	downloaded: number;
 	conflicts: number;
+	/** Files whose local state could not be determined; left untouched. */
+	unreadable: number;
 	skipped: number;
 	duration: number;
 }
@@ -115,6 +117,9 @@ export class SyncEngine {
 		while (retries > 0) {
 			try {
 				const skippedFiles: string[] = [];
+				const skippedPaths = new Set<string>();
+				const unreadableFiles: { path: string; reason: string }[] = [];
+				const unreadablePaths = new Set<string>();
 				let conflicts = 0;
 				const repo = await this.getRepoName();
 				const latestCommitSha = await this.api.getLatestCommitSha(repo);
@@ -157,6 +162,7 @@ export class SyncEngine {
 				for (const [normPath, file] of localFileMap.entries()) {
 					if (file.stat.size > 25 * 1024 * 1024) {
 						skippedFiles.push(normPath);
+						skippedPaths.add(normPath);
 						continue;
 					}
 					const cache = !force
@@ -215,43 +221,56 @@ export class SyncEngine {
 					try {
 						if (await this.app.vault.adapter.exists(path)) {
 							const stat = await this.app.vault.adapter.stat(path);
-							if (stat && stat.type === 'file') {
-								if (stat.size > 25 * 1024 * 1024) {
-									skippedFiles.push(path);
-									continue;
-								}
-								const cache = !force
-									? this.settings.localHashCache[path]
-									: undefined;
-								const mtime = stat.mtime;
-								const size = stat.size;
+							if (!stat || stat.type !== 'file') {
+								throw new Error(
+									'local file state could not be determined',
+								);
+							}
+							if (stat.size > 25 * 1024 * 1024) {
+								skippedFiles.push(path);
+								skippedPaths.add(path);
+								continue;
+							}
+							const cache = !force
+								? this.settings.localHashCache[path]
+								: undefined;
+							const mtime = stat.mtime;
+							const size = stat.size;
 
-								if (
-									cache &&
-									cache.mtime === mtime &&
-									cache.size === size
-								) {
-									localHashes.set(path, cache.sha);
-								} else {
-									let buffer =
-										await this.app.vault.adapter.readBinary(
-											path,
-										);
-									if (isTextFile(path)) {
-										buffer = normalizeTextBuffer(buffer);
-									}
-									const sha = await calculateGitSha(buffer);
-									localHashes.set(path, sha);
-									this.settings.localHashCache[path] = {
-										mtime,
-										size,
-										sha,
-									};
+							if (
+								cache &&
+								cache.mtime === mtime &&
+								cache.size === size
+							) {
+								localHashes.set(path, cache.sha);
+							} else {
+								let buffer =
+									await this.app.vault.adapter.readBinary(
+										path,
+									);
+								if (isTextFile(path)) {
+									buffer = normalizeTextBuffer(buffer);
 								}
+								const sha = await calculateGitSha(buffer);
+								localHashes.set(path, sha);
+								this.settings.localHashCache[path] = {
+									mtime,
+									size,
+									sha,
+								};
 							}
 						}
-					} catch {
-						// Ignore unindexed read error
+					} catch (error: unknown) {
+						// Fail closed. We cannot tell whether the file still exists
+						// locally, so it must not be treated as deleted: that would
+						// remove it from the remote and from every other device.
+						// Keep the previous sync state and retry on the next sync.
+						const reason =
+							error instanceof Error
+								? error.message
+								: String(error);
+						unreadablePaths.add(path);
+						unreadableFiles.push({ path, reason });
 					}
 				}
 
@@ -302,6 +321,12 @@ export class SyncEngine {
 				]);
 
 				for (const path of allPaths) {
+					// A file that was skipped (too large) or could not be read must
+					// never be acted on: treating it as absent would delete it from
+					// the remote and from every other device.
+					if (skippedPaths.has(path) || unreadablePaths.has(path)) {
+						continue;
+					}
 					const localFile = localFileMap.get(path);
 					const remoteSize = remoteSizes.get(path) || 0;
 					const isLocalTooLarge =
@@ -311,6 +336,7 @@ export class SyncEngine {
 					if (isLocalTooLarge || isRemoteTooLarge) {
 						if (!skippedFiles.includes(path)) {
 							skippedFiles.push(path);
+							skippedPaths.add(path);
 						}
 						continue;
 					}
@@ -674,6 +700,17 @@ export class SyncEngine {
 						msg += `\n\u26a0\ufe0f Skipped ${skippedFiles.length} file(s) exceeding 25MB limit.`;
 					}
 					msg += `\n(in ${duration}s)`;
+					if (unreadableFiles.length > 0) {
+						const shown = unreadableFiles
+							.slice(0, 3)
+							.map((f) => f.path)
+							.join(', ');
+						const extra =
+							unreadableFiles.length > 3
+								? ` (+${unreadableFiles.length - 3} more)`
+								: '';
+						msg += `\u26a0\ufe0f Could not read ${unreadableFiles.length} file(s) locally, left unchanged: ${shown}${extra}`;
+					}
 					new Notice(msg);
 				}
 
@@ -688,6 +725,7 @@ export class SyncEngine {
 					uploaded: filesToUpload.length,
 					downloaded: filesToDownload.length,
 					conflicts,
+					unreadable: unreadableFiles.length,
 					skipped: skippedFiles.length,
 					duration: Date.now() - startTime,
 				};
@@ -712,6 +750,7 @@ export class SyncEngine {
 			uploaded: 0,
 			downloaded: 0,
 			conflicts: 0,
+			unreadable: 0,
 			skipped: 0,
 			duration: Date.now() - startTime,
 		};
