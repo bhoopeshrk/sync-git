@@ -47,7 +47,14 @@ jobs:
             assets="$assets styles.css"
           fi
 
-          gh release create "$tag" \
-            --title="$tag" \
-            --generate-notes \
-            $assets
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # The release already exists - for example when a tag is moved to a
+            # rewritten commit. Replace the assets and keep the release notes
+            # instead of failing.
+            gh release upload "$tag" $assets --clobber
+          else
+            gh release create "$tag" \
+              --title="$tag" \
+              --generate-notes \
+              $assets
+          fi
