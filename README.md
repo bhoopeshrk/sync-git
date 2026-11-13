@@ -20,6 +20,8 @@ SyncGit is a community plugin that keeps your Obsidian vault synchronized across
 - **Offline-aware** — background sync is skipped silently when offline
 - **Secure token storage** — Personal Access Token stored in browser `localStorage`, never written to `data.json`
 - **Smart delta hashing** — unmodified files are skipped using metadata timestamps
+- **Binary-safe uploads** — images, audio, video and other binary files are transferred byte for byte, never re-encoded
+- **Safe by default** — a file that cannot be read is left untouched instead of being deleted from the repository
 - **Large file protection** — files exceeding 25 MB are automatically skipped
 - **Concurrent edit retries** — automatic retry up to 3 times on race conditions
 - **Dynamic status bar** — real-time sync state at the bottom of Obsidian
@@ -56,6 +58,8 @@ You can also open it directly in Obsidian: [Install SyncGit](obsidian://show-plu
 
 For detailed setup instructions, authentication modes, commands, and troubleshooting, see **[USAGE.md](USAGE.md)**.
 
+Release notes for every version are in **[CHANGELOG.md](CHANGELOG.md)**.
+
 ---
 
 ## Network disclosure
@@ -88,7 +92,10 @@ npm install
 npm run dev    # Start compilation in watch mode
 npm run build  # Production build (type-check and bundle into main.js)
 npm run lint   # Run Obsidian-specific ESLint rules
+npm test       # Run the offline regression suite (no Obsidian or token needed)
 ```
+
+The test suite runs the real plugin sources against an in-memory vault and a fake GitHub API, so it needs neither Obsidian nor a network connection nor a token.
 
 ### Version bumping
 
@@ -102,11 +109,13 @@ npm version major   # Breaking changes
 
 Running `npm version` updates `package.json`, invokes `version-bump.mjs` to synchronize `manifest.json` and `versions.json`, creates the git commit, and tags the release (without a leading `v`, as required by Obsidian).
 
+Before bumping, update `CHANGELOG.md`: rename the `## Unreleased` heading to `## <version> - <date>` and describe the user visible changes. Release notes are the only documentation most users read.
+
 To publish the release:
 ```bash
 git push origin main --follow-tags
 ```
-GitHub Actions will automatically build production assets (`main.js`, `manifest.json`, `styles.css`) and attach them to the release.
+GitHub Actions will automatically build production assets (`main.js`, `manifest.json`, `styles.css`) and attach them to the release. The community plugin directory picks the release up automatically, though the listing can take a few hours to refresh.
 
 ---
 

@@ -8,7 +8,7 @@
 
 ## Environment & tooling
 
-- Node.js: use current LTS (Node 18+ recommended).
+- Node.js: current LTS (Node 20+; CI runs 20.x, 22.x and 24.x).
 - **Package manager: npm** (required for this sample - `package.json` defines npm scripts and dependencies).
 - **Bundler: esbuild** (required for this sample - `esbuild.config.mjs` and build scripts depend on it). Alternative bundlers like Rollup or webpack are acceptable for other projects if they bundle all external dependencies into `main.js`.
 - Types: `obsidian` type definitions.
@@ -47,17 +47,17 @@ npm run build
     ```
     src/
       main.ts           # Plugin entry point, lifecycle management
-      settings.ts       # Settings interface and defaults
-      commands/         # Command implementations
-        command1.ts
-        command2.ts
-      ui/              # UI components, modals, views
-        modal.ts
-        view.ts
-      utils/           # Utility functions, helpers
-        helpers.ts
-        constants.ts
-      types.ts         # TypeScript interfaces and types
+      settings.ts       # Settings tab
+      sync-engine.ts    # Sync orchestration: hashing, upload/download, conflicts
+      github-api.ts     # GitHub REST client
+      conflict-modal.ts # Conflict dialog
+      sync-log-modal.ts # Sync history modal
+      utils.ts          # Hashing, path normalization, text/binary detection
+      types.ts          # Settings interfaces, defaults, shared constants
+    tests/              # Offline regression tests, run with `npm test`
+      data-harness.cjs  # In-memory vault + fake GitHub API
+      runtime-harness.cjs # Plugin runtime: status bar, scheduler, log
+      *.test.cjs        # The tests themselves
     ```
 - **Do not commit build artifacts**: Never commit `node_modules/`, `main.js`, or other generated files to version control.
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible packages.
@@ -79,6 +79,23 @@ npm run build
 
 ## Testing
 
+### Automated tests (`npm test`)
+
+`npm test` runs the offline regression suite with `node --test`. It needs no Obsidian, no network and no token: the harness transpiles the real `src/*.ts` with `ts.transpileModule` and runs it against an in-memory vault and a fake GitHub API.
+
+```bash
+npm test
+```
+
+- `tests/data-harness.cjs` — the sync engine: an in-memory vault, a fake GitHub API and fixture builders.
+- `tests/runtime-harness.cjs` — the plugin runtime: status bar, scheduler, notices, sync log.
+- Test files are `tests/*.test.cjs`. They are CommonJS because the package is `"type": "module"`, and they are excluded from ESLint.
+- The harness does **not** type check. Keep `npm run build` (which runs `tsc -noEmit`) mandatory — CI runs it.
+- A test must **fail before the fix and pass after it**. A test that passes on the broken code proves nothing.
+- `node --test` discovers the files by the `*.test.cjs` suffix; keep it.
+
+### Manual test
+
 - Manual install for testing: copy `main.js`, `manifest.json`, `styles.css` (if any) to:
     ```
     <Vault>/.obsidian/plugins/<plugin-id>/
@@ -98,12 +115,14 @@ Always use the automated version bump workflow rather than manually editing vers
 
 ### Automated version bump workflow (`npm version`)
 
-1. **Verify build and linter passing**:
+1. **Verify build, linter and tests passing**:
    ```bash
    npm run build
    npm run lint
+   npm test
    ```
-2. **Execute `npm version`**:
+2. **Update `CHANGELOG.md`**: rename the `## Unreleased` heading to `## <version> - <date>` and describe the user visible changes. The release notes are the only documentation most users read — cover renamed settings, changed sync behaviour, and anything that makes previously skipped content start syncing.
+3. **Execute `npm version`**:
    ```bash
    npm version patch   # For bug fixes (e.g. 1.2.4 -> 1.2.5)
    npm version minor   # For new backwards-compatible features (e.g. 1.2.4 -> 1.3.0)
@@ -118,7 +137,7 @@ Always use the automated version bump workflow rather than manually editing vers
    - [`version-bump.mjs`](file:///d:/FreeLance/MyWork/sync-git/version-bump.mjs) reads `process.env.npm_package_version`, synchronizes `manifest.json`'s `version`, and adds a new entry mapping the version to `minAppVersion` in `versions.json`.
    - `npm version` stages all modified metadata files (`package.json`, `manifest.json`, `versions.json`), commits them with the version name, and generates a git tag (without a leading `v`).
 
-3. **Push to GitHub**:
+4. **Push to GitHub**:
    ```bash
    git push origin main --follow-tags
    ```
@@ -128,8 +147,9 @@ Always use the automated version bump workflow rather than manually editing vers
 
 - **No leading `v` in tags**: GitHub release tags must match `manifest.json`'s `version` exactly (e.g. `1.2.5`, not `v1.2.5`).
 - **Synchronized metadata**: `package.json`, `manifest.json`, and `versions.json` must always stay in sync. Running `npm version` guarantees this.
-- **Accurate `minAppVersion`**: Ensure `minAppVersion` in `manifest.json` accurately reflects the minimum Obsidian API required by any new features.
-- After the release asset is created, the community plugin directory will automatically pick up the update.
+- **Accurate `minAppVersion`**: Ensure `minAppVersion` in `manifest.json` accurately reflects the minimum Obsidian API required by any new features. Check the API actually exists in that version before relying on it (for example `requestUrl({ throw: false })`).
+- **Changelog required**: every release that changes user-visible behaviour needs a `CHANGELOG.md` entry. Use `minor` when behaviour changes (files start syncing, a setting is renamed, the hash rules change), `patch` for pure fixes.
+- After the release asset is created, the community plugin directory will automatically pick up the update. The listing can take a few hours to refresh.
 
 ## Security, privacy, and compliance
 
@@ -183,14 +203,45 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 - Provide defaults and validation in settings.
 - Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
 - Use `this.register*` helpers for everything that needs cleanup.
+- **Fail closed on destructive operations.** If the local state of a file cannot be determined, leave the file alone — never treat "unknown" as "deleted", and never let a single unreadable file abort the whole sync.
+- **Record sync state only after the remote really holds the new content.** Writing `lastSyncState` before the commit succeeds makes the next sync overwrite the user's edits.
+- **Never overwrite a local file with remote content** when the local copy could not be read or safely renamed.
+- Add a regression test with every fix, and check that it fails before the fix.
 
 **Don't**
 
 - Introduce network calls without an obvious user-facing reason and documentation.
 - Ship features that require cloud services without clear disclosure and explicit opt-in.
 - Store or transmit vault contents unless essential and consented.
+- Rename or relabel a user-facing setting without a `CHANGELOG.md` entry, and keep the persisted settings key stable so existing installations keep their configuration.
+- Change the hashing or normalization rules without bumping `LOCAL_HASH_CACHE_VERSION` — stale hashes would be compared against the remote.
 
 ## Common tasks
+
+### Write a regression test
+
+```js
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { setup } = require('./data-harness.cjs');
+
+test('a file that cannot be read is not deleted remotely', async () => {
+	const x = await setup({
+		local: { '.gitignore': 'LOCAL' },
+		remote: { '.gitignore': 'BASE' },
+		base: { '.gitignore': 'BASE' },
+		unindexed: ['.gitignore'],
+		readFails: ['.gitignore'],
+	});
+	const result = await x.engine.runSync(true);
+	assert.equal(result.unreadable, 1);
+	assert.equal(x.tree.size, 1); // still on the remote
+});
+```
+
+- `setup()` options: `local`, `remote`, `base` (the last synced state), `unindexed` (paths outside the Obsidian index), `renameFails`, `readFails`.
+- The fixture exposes `x.settings` (persisted settings), `x.tree` (the remote tree), `x.blobs`, `x.log` (recorded operations), `x.disk` (local files) and `x.text(path)`.
+- Use `tests/runtime-harness.cjs` for the plugin runtime: `harness()` returns the notices, intervals, modals and a `plugin()` instance.
 
 ### Organize code across multiple files
 
@@ -291,6 +342,8 @@ this.registerInterval(
 - Commands not appearing: verify `addCommand` runs after `onload` and IDs are unique.
 - Settings not persisting: ensure `loadData`/`saveData` are awaited and you re-render the UI after changes.
 - Mobile-only issues: confirm you're not using desktop-only APIs; check `isDesktopOnly` and adjust.
+- A fix "works" but nothing changed: run `npm test`. A regression test that does not fail before the fix is not testing the bug.
+- A test passes locally but fails in CI: check the Node version — CI runs 20.x, 22.x and 24.x, and `node --test` discovery differs between versions.
 
 ## References
 
