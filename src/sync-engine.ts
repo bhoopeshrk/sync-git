@@ -79,8 +79,10 @@ export class SyncEngine {
 	private isIgnored(path: string): boolean {
 		const normPath = normalizeFilePath(path);
 		const configDir = this.app.vault.configDir;
-		if (normPath.startsWith(`${configDir}/`) || normPath.includes('.trash'))
-			return true;
+		// `.trash` is Obsidian's trash folder: exclude it only when it is a whole
+		// path segment, so that files such as `ideas.trash.md` still sync.
+		const isTrash = normPath.split('/').includes('.trash');
+		if (normPath.startsWith(`${configDir}/`) || isTrash) return true;
 
 		for (const regex of this.ignoreRegexes) {
 			if (regex.test(normPath)) return true;
