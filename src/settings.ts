@@ -170,8 +170,8 @@ export class GitHubSyncSettingTab extends PluginSettingTab {
 				heading: "Sync schedule",
 				items: [
 					{
-						name: "Auto pull on startup",
-						desc: "Pull remote changes when Obsidian starts.",
+						name: "Auto sync on startup",
+						desc: "Run a full bidirectional sync when Obsidian starts, including uploads, downloads and deletions. Independent of the periodic auto sync.",
 						control: {
 							type: "toggle",
 							key: "autoPullOnStartup",

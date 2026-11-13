@@ -80,7 +80,7 @@ Best for users who prefer strict, repo-scoped permissions or corporate security 
 
 | Setting | Description |
 | :--- | :--- |
-| **Auto pull on startup** | Automatically pull remote changes when Obsidian opens. |
+| **Auto sync on startup** | Run a full bidirectional sync when Obsidian opens, including uploads, downloads and deletions. Independent of the periodic auto sync. |
 | **Auto sync enabled** | Periodically commit local changes and pull remote updates. |
 | **Sync frequency** | Choose the background sync interval (Every 1, 5, 15, 30, 60 minutes, 12 hours, 24 hours, or Disabled). |
 
@@ -140,10 +140,12 @@ The status bar item indicates live sync status and allows quick manual sync:
 | Status Indicator | Meaning |
 | :--- | :--- |
 | **⚡ GitHub sync** | Plugin needs configuration. Click to open SyncGit settings. |
+| **☁️ Not checked** | Nothing has been synced yet in this session. Click to start a sync. |
 | **☁️ Synced** / **Idle** | Vault is up to date with the remote repository. |
 | **🔄 Syncing... [x/y]** | Sync is actively transferring files. |
 | **💤 Offline** | No network connection detected; background sync is suspended. |
-| **⚠️ [Error message]** | Last sync encountered an issue. Hover to view the error message, or check the sync log. |
+| **⚠️ Partially synced** | Some files were not synced (for example a file larger than 25 MB, or a file that could not be read). Hover for details, or check the sync log. |
+| **⚠️ [Error message]** | Last sync encountered an issue, or left a conflict unresolved. Hover to view the error message, or check the sync log. |
 
 *Note: On mobile screens, the status bar displays a compact icon to save space.*
 

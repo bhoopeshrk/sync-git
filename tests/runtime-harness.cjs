@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 function harness() {
 	const notices = [],
+		copied = [],
 		intervals = [],
 		cleared = [],
 		modals = [];
@@ -40,7 +41,10 @@ function harness() {
 		setText(t) {
 			this.text = t;
 		}
-		addEventListener() {}
+		addEventListener(type, handler) {
+			this.listeners = this.listeners || {};
+			(this.listeners[type] = this.listeners[type] || []).push(handler);
+		}
 	}
 	class Modal {
 		constructor(app) {
@@ -92,7 +96,14 @@ function harness() {
 		console,
 		AbortController,
 		Date,
-		navigator: { onLine: true },
+		navigator: {
+			onLine: true,
+			clipboard: {
+				writeText: async (text) => {
+					copied.push(text);
+				},
+			},
+		},
 		window: {
 			setInterval(fn, ms) {
 				intervals.push({ fn, ms });
@@ -144,10 +155,31 @@ function harness() {
 		p.saveSettings = async () => {};
 		return p;
 	}
-	return { load, plugin, notices, intervals, cleared, modals, TFile, Element, context, obsidian };
+	return {
+		load,
+		plugin,
+		notices,
+		copied,
+		intervals,
+		cleared,
+		modals,
+		TFile,
+		Element,
+		context,
+		obsidian,
+	};
 }
 module.exports = {
 	harness,
-	ok: { stateChanged: false, uploaded: 0, downloaded: 0, conflicts: 0, skipped: 0, duration: 1 },
+	ok: {
+		stateChanged: false,
+		uploaded: 0,
+		downloaded: 0,
+		conflicts: 0,
+		unresolvedConflicts: 0,
+		unreadable: 0,
+		skipped: 0,
+		duration: 1,
+	},
 	enc: (s) => new TextEncoder().encode(s).buffer,
 };

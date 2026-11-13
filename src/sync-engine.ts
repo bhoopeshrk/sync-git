@@ -22,6 +22,8 @@ export interface SyncResult {
 	uploaded: number;
 	downloaded: number;
 	conflicts: number;
+	/** Conflicts that are still open after the sync. */
+	unresolvedConflicts: number;
 	/** Files whose local state could not be determined; left untouched. */
 	unreadable: number;
 	skipped: number;
@@ -125,6 +127,7 @@ export class SyncEngine {
 				const unreadableFiles: { path: string; reason: string }[] = [];
 				const unreadablePaths = new Set<string>();
 				let conflicts = 0;
+				let unresolvedConflicts = 0;
 				const repo = await this.getRepoName();
 				const latestCommitSha = await this.api.getLatestCommitSha(repo);
 				const remoteTree = await this.api.getTree(
@@ -392,6 +395,7 @@ export class SyncEngine {
 						} else {
 							if (isAuto) {
 								conflicts++;
+								unresolvedConflicts++;
 								continue;
 							}
 							if (remoteSha) {
@@ -469,11 +473,12 @@ export class SyncEngine {
 									localContentPreview,
 									remoteContentPreview,
 								};
-								await this.promptConflictResolution(
+								const resolved = await this.promptConflictResolution(
 									conflictInfo,
 									filesToUpload,
 									filesToDownload,
 								);
+								if (!resolved) unresolvedConflicts++;
 								conflicts++;
 							}
 						}
@@ -715,7 +720,7 @@ export class SyncEngine {
 					}
 
 					if (conflicts > 0) {
-						msg += `\n\u26a0\ufe0f ${conflicts} conflict${conflicts > 1 ? 's' : ''} resolved.`;
+						msg += `\n\u26a0\ufe0f ${conflicts} conflict${conflicts > 1 ? 's' : ''} encountered (${unresolvedConflicts} unresolved).`;
 					}
 					if (skippedFiles.length > 0) {
 						msg += `\n\u26a0\ufe0f Skipped ${skippedFiles.length} file(s) exceeding 25MB limit.`;
@@ -746,6 +751,7 @@ export class SyncEngine {
 					uploaded: filesToUpload.length,
 					downloaded: filesToDownload.length,
 					conflicts,
+					unresolvedConflicts,
 					unreadable: unreadableFiles.length,
 					skipped: skippedFiles.length,
 					duration: Date.now() - startTime,
@@ -771,6 +777,7 @@ export class SyncEngine {
 			uploaded: 0,
 			downloaded: 0,
 			conflicts: 0,
+			unresolvedConflicts: 0,
 			unreadable: 0,
 			skipped: 0,
 			duration: Date.now() - startTime,
@@ -781,15 +788,15 @@ export class SyncEngine {
 		info: ConflictInfo,
 		filesToUpload: string[],
 		filesToDownload: string[],
-	): Promise<void> {
-		return new Promise<void>((resolve) => {
+	): Promise<boolean> {
+		return new Promise<boolean>((resolve) => {
 			new ConflictModal(this.app, info, (choice) => {
 				if (choice === 'local') {
 					filesToUpload.push(info.filePath);
-					resolve();
+					resolve(true);
 				} else if (choice === 'remote') {
 					filesToDownload.push(info.filePath);
-					resolve();
+					resolve(true);
 				} else if (choice === 'both') {
 					const normalizedPath = normalizeFilePath(info.filePath);
 					const file = this.getFileFromVault(normalizedPath);
@@ -804,31 +811,27 @@ export class SyncEngine {
 					const conflictPath = normalizeFilePath(
 						`${base} (Local Conflict ${dateStr})${ext}`,
 					);
-					if (file) {
-						void this.app.vault
-							.rename(file, conflictPath)
-							.then(() => {
-								filesToDownload.push(info.filePath);
-								resolve();
-							})
-							.catch(() => {
-								new Notice(
-									`Failed to rename conflict file: ${info.filePath}. Skipping download to preserve local changes.`,
-								);
-								resolve();
-							});
-					} else {
-						void this.app.vault.adapter
-							.rename(normalizedPath, conflictPath)
-							.then(() => {
-								filesToDownload.push(info.filePath);
-								resolve();
-							})
-							.catch(() => {
-								filesToDownload.push(info.filePath);
-								resolve();
-							});
-					}
+					const renaming = file
+						? this.app.vault.rename(file, conflictPath)
+						: this.app.vault.adapter.rename(
+								normalizedPath,
+								conflictPath,
+							);
+					void renaming
+						.then(() => {
+							filesToDownload.push(info.filePath);
+							resolve(true);
+						})
+						.catch(() => {
+							// The local file is the only surviving copy of the
+							// user's changes. Overwriting it with the remote
+							// version would lose them, so the download is
+							// skipped and the conflict stays unresolved.
+							new Notice(
+								`Failed to rename conflict file: ${info.filePath}. Skipping download to preserve local changes.`,
+							);
+							resolve(false);
+						});
 				}
 			}).open();
 		});

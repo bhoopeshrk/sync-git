@@ -32,6 +32,10 @@ export interface SyncLogEntry {
   uploaded: number;
   downloaded: number;
   conflicts: number;
+  /** Conflicts that were not resolved during the sync. */
+  unresolvedConflicts?: number;
+  /** Files whose local state could not be determined. */
+  unreadable?: number;
   skipped: number;
   duration: number;
   error?: string;

@@ -192,6 +192,14 @@
 	color: var(--text-success);
 }
 
+.ghs-status-ready .ghs-status-icon {
+	color: var(--text-muted);
+}
+
+.ghs-status-partial .ghs-status-icon {
+	color: var(--text-warning);
+}
+
 .ghs-status-offline .ghs-status-icon {
 	color: var(--text-muted);
 }
@@ -414,6 +422,11 @@ input.ghs-input-invalid,
 
 .ghs-badge-success {
 	background-color: var(--background-modifier-success);
+	color: var(--text-on-accent);
+}
+
+.ghs-badge-partial {
+	background-color: var(--background-modifier-warning, var(--background-secondary));
 	color: var(--text-on-accent);
 }
 
