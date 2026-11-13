@@ -257,9 +257,16 @@ export default class GitHubSyncPlugin extends Plugin {
 
 	setupScheduler() {
 		if (this.syncIntervalId) window.clearInterval(this.syncIntervalId);
-		if (this.settings.syncFrequencyMinutes > 0) {
+		this.syncIntervalId = null;
+		// "Auto sync enabled" gates every automatic sync, including the
+		// periodic one. Without this check the interval kept running and
+		// kept pushing the vault to GitHub after the user turned it off.
+		if (this.settings.autoSyncEnabled && this.settings.syncFrequencyMinutes > 0) {
 			this.syncIntervalId = window.setInterval(
-				() => void this.triggerSync(true),
+				() => {
+					// Guard against a stale interval that fires once more.
+					if (this.settings.autoSyncEnabled) void this.triggerSync(true);
+				},
 				this.settings.syncFrequencyMinutes * 60 * 1000,
 			);
 		}
