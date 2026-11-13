@@ -5,7 +5,7 @@ All notable changes to SyncGit are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.3.0 - 2026-11-13
 
 ### Fixed
 
@@ -84,8 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   log distinguishes "Unresolved conflicts" and "Partial" from "Success".
   (#11)
 
-### Added
+### Credits
 
+All eight issues in this release were reported by @Morgulisan, together with
+a fix for each one. The root cause analysis and the fixes are the substance of
+this release; the pull requests #14 to #21 are credited in the release notes.
+
+### Added
 - Offline regression tests (`npm test`) that run the real plugin sources
   against an in-memory vault and a fake GitHub API, without Obsidian, a
   network connection or a token.
