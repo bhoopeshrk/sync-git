@@ -107,9 +107,12 @@ things in it did not match reality and have since been corrected:
   account. The release notes have been edited; `CHANGELOG.md` and PR `#22` always used the
   correct handle.
 - **The commit history listed a subject that was not in the repository.** The commit that
-  fixes issue `#13` had a malformed subject (a single backslash). The history was rewritten
-  so that only the subject changed — the tree at the release tag is byte identical to the
-  published one, so the released artifact is unaffected.
+  fixes issue `#13` has a malformed subject (a single backslash). Correcting it means
+  rewriting the published history and moving the released tag. That was judged not worth
+  doing for a cosmetic change: the release artifact, the tag tree and every user visible
+  behaviour are identical either way, and rewriting published history on a public repository
+  carries real risk for no user benefit. **The malformed subject therefore remains in the
+  history of `1.3.0`.** It can be corrected in the next release, or left as it is.
 - **The "tests that fail without the fix" table was slightly understated.** Two files were
   listed with fewer failures than they actually produce (`binary-safe` 14 → 16,
   `engine-trash-paths` 4 → 7). The correct total is 74, not 69.
@@ -128,7 +131,7 @@ things in it did not match reality and have since been corrected:
 | Contributor attribution in the git history | @Morgulisan | The harness commit keeps their authorship. The individual pull requests `#14`–`#21` are closed with a pointer to `#22`; they can be rebased onto `main` and reopened if they want their commits in the history |
 | Fragile string matching on error text | backlog | `src/sync-engine.ts` still matches `"422"` and `"rate limit"` on message text; typed errors would be cleaner |
 | Issue triage metadata | maintainer | The eight issues had no type, priority or assignee when they were reported |
-| `backup/pre-message-fix` branch | maintainer | Safety net for the history rewrite. Safe to delete once this is accepted |
+| Malformed commit subject | maintainer | The commit that fixes issue `#13` has the subject `\` instead of a real message. Fixing it needs a history rewrite, so it was left alone. Cosmetic only |
 
 ---
 
@@ -140,3 +143,5 @@ things in it did not match reality and have since been corrected:
 - The release workflow now updates an existing release instead of failing when a tag is
   moved, so a rewritten tag no longer breaks a re-publish.
 - The eight issues each carry a closing comment pointing at PR `#22` and the changelog.
+- The published history of `1.3.0` is intact: no commit was rewritten and the tag still
+  points at the commit that was released.
