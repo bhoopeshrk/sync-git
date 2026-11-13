@@ -633,7 +633,7 @@ export class SyncEngine {
 							mode: '100644',
 							type: 'blob',
 							sha: null,
-							});
+						});
 						changedFileNames.push(
 							`Deleted: ${path.split('/').pop()}`,
 						);
@@ -651,7 +651,7 @@ export class SyncEngine {
 						treePayload,
 						remoteTree.sha,
 						latestCommitSha,
-						);
+					);
 					// The remote only holds the new content once the commit
 					// succeeded. Recording the state any earlier would make the
 					// next sync believe the local edits were pushed, and
@@ -725,7 +725,6 @@ export class SyncEngine {
 					if (skippedFiles.length > 0) {
 						msg += `\n\u26a0\ufe0f Skipped ${skippedFiles.length} file(s) exceeding 25MB limit.`;
 					}
-					msg += `\n(in ${duration}s)`;
 					if (unreadableFiles.length > 0) {
 						const shown = unreadableFiles
 							.slice(0, 3)
@@ -735,8 +734,9 @@ export class SyncEngine {
 							unreadableFiles.length > 3
 								? ` (+${unreadableFiles.length - 3} more)`
 								: '';
-						msg += `\u26a0\ufe0f Could not read ${unreadableFiles.length} file(s) locally, left unchanged: ${shown}${extra}`;
+						msg += `\n\u26a0\ufe0f Could not read ${unreadableFiles.length} file(s) locally, left unchanged: ${shown}${extra}`;
 					}
+					msg += `\n(in ${duration}s)`;
 					new Notice(msg);
 				}
 

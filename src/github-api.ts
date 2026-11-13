@@ -116,7 +116,7 @@ export class GitHubApiClient {
 			case 404:
 				return 'Repository not found. Verify the repo name and that your token has access.';
 			case 422:
-				return 'GitHub rejected the request (422). This may be a merge conflict - retry the sync.';
+				return 'GitHub rejected the request (422). This may be a merge conflict — retry the sync.';
 			default: {
 				const detail = summarizeBody(body);
 				return detail
@@ -139,6 +139,7 @@ export class GitHubApiClient {
 			} else throw e;
 		}
 	}
+
 	async getLatestCommitSha(repo: string, branch = 'main'): Promise<string> {
 		try {
 			const ref = await this.request(`/repos/${this.username}/${repo}/git/ref/heads/${branch}`) as GitHubRef;
@@ -179,6 +180,7 @@ export class GitHubApiClient {
 			return commit.sha;
 		}
 	}
+
 	async getTree(repo: string, treeSha: string): Promise<GitHubTree> {
 		return (await this.request(`/repos/${this.username}/${repo}/git/trees/${treeSha}?recursive=1`)) as GitHubTree;
 	}
