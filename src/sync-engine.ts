@@ -146,6 +146,10 @@ export class SyncEngine {
 				remoteTree.tree.forEach((item) => {
 					if (item.type === 'blob') {
 						const normPath = normalizeFilePath(item.path);
+						// Ignored paths are invisible to the sync on both sides.
+						// Without this they look like "deleted locally" (ignored
+						// files) or are downloaded despite the exclusion.
+						if (this.isIgnored(normPath)) return;
 						remoteFiles.set(normPath, item.sha);
 						remoteSizes.set(normPath, item.size || 0);
 					}
@@ -329,6 +333,16 @@ export class SyncEngine {
 				const filesToDeleteLocally: string[] = [];
 				const filesToDeleteRemotely: string[] = [];
 				const changedFileNames: string[] = [];
+
+				// A path that is ignored on this device must not be compared at
+				// all. Its old state is dropped, so that un-ignoring it later
+				// starts from a clean base instead of a stale one.
+				for (const path of Object.keys(this.settings.lastSyncState)) {
+					if (this.isIgnored(path)) {
+						delete this.settings.lastSyncState[path];
+						stateChanged = true;
+					}
+				}
 
 				const allPaths = new Set([
 					...remoteFiles.keys(),
