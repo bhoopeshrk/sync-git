@@ -50,6 +50,28 @@ export class SyncEngine {
 		return null;
 	}
 
+	/**
+	 * Hash of the file as it is on disk right now, computed with the same
+	 * normalization as the scan. `undefined` if the file does not exist.
+	 */
+	private async readLocalSha(
+		normalizedPath: string,
+	): Promise<string | undefined> {
+		const file = this.getFileFromVault(normalizedPath);
+		let buffer: ArrayBuffer;
+		if (file) {
+			buffer = await this.app.vault.readBinary(file);
+		} else if (await this.app.vault.adapter.exists(normalizedPath)) {
+			buffer = await this.app.vault.adapter.readBinary(normalizedPath);
+		} else {
+			return undefined;
+		}
+		if (isTextFile(normalizedPath)) {
+			buffer = normalizeTextBuffer(buffer);
+		}
+		return calculateGitSha(buffer);
+	}
+
 	private async getRepoName(): Promise<string> {
 		if (
 			this.settings.customRepoName &&
@@ -477,6 +499,7 @@ export class SyncEngine {
 									conflictInfo,
 									filesToUpload,
 									filesToDownload,
+									localHashes,
 								);
 								if (!resolved) unresolvedConflicts++;
 								conflicts++;
@@ -487,6 +510,15 @@ export class SyncEngine {
 
 				for (const path of filesToDeleteLocally) {
 					const normalizedPath = normalizeFilePath(path);
+					// The decision was made on the state at the start of the
+					// sync. If the file was edited since, keep it: the next
+					// sync sees the edit and uploads it.
+					if (
+						(await this.readLocalSha(normalizedPath)) !==
+						localHashes.get(normalizedPath)
+					) {
+						continue;
+					}
 					const file = this.getFileFromVault(normalizedPath);
 					if (file) {
 						await this.app.fileManager.trashFile(file);
@@ -499,6 +531,7 @@ export class SyncEngine {
 					stateChanged = true;
 				}
 
+				const racedDownloads: string[] = [];
 				const totalDownloads = filesToDownload.length;
 				for (let i = 0; i < totalDownloads; i++) {
 					const path = filesToDownload[i]!;
@@ -508,6 +541,20 @@ export class SyncEngine {
 						remoteFiles.get(path)!,
 					);
 					const normalizedPath = normalizeFilePath(path);
+					// Downloading takes time. If the local file was edited in the
+					// meantime, writing now would silently destroy that edit.
+					// Leave it alone and keep the old sync state: the next sync
+					// sees local != base and remote != base and treats it as a
+					// regular conflict.
+					if (
+						(await this.readLocalSha(normalizedPath)) !==
+						localHashes.get(normalizedPath)
+					) {
+						racedDownloads.push(path);
+						conflicts++;
+						unresolvedConflicts++;
+						continue;
+					}
 					const existingFile = this.getFileFromVault(normalizedPath);
 					try {
 						if (existingFile instanceof TFile) {
@@ -565,6 +612,12 @@ export class SyncEngine {
 					}
 					this.settings.lastSyncState[path] = remoteFiles.get(path)!;
 					stateChanged = true;
+				}
+
+				// Skipped downloads were not downloaded: keep counts and notices
+				// truthful.
+				for (const path of racedDownloads) {
+					filesToDownload.splice(filesToDownload.indexOf(path), 1);
 				}
 
 				if (
@@ -788,6 +841,7 @@ export class SyncEngine {
 		info: ConflictInfo,
 		filesToUpload: string[],
 		filesToDownload: string[],
+		localHashes?: Map<string, string>,
 	): Promise<boolean> {
 		return new Promise<boolean>((resolve) => {
 			new ConflictModal(this.app, info, (choice) => {
@@ -819,6 +873,9 @@ export class SyncEngine {
 							);
 					void renaming
 						.then(() => {
+							// The local file now lives under the conflict name;
+							// nothing is expected at the original path anymore.
+							localHashes?.delete(normalizedPath);
 							filesToDownload.push(info.filePath);
 							resolve(true);
 						})
