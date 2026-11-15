@@ -91,11 +91,32 @@ export function globToRegex(glob: string): RegExp {
 	const pattern = glob.trim();
 	if (pattern.length === 0) return /^$/;
 
-	let regStr = pattern
-		.replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex characters except * and ?
-		.replace(/\*\*/g, '.*')
-		.replace(/\*/g, '[^/]*')
-		.replace(/\?/g, '[^/]');
+	// Translate in a single pass. Chained replace() calls would re-process the
+	// output of the previous step (e.g. the `*` inside a generated `.*`).
+	let regStr = '';
+	for (let i = 0; i < pattern.length; i++) {
+		const c = pattern[i]!;
+		if (c === '*') {
+			if (pattern[i + 1] === '*') {
+				// `**/` matches zero or more directories, `**` anything.
+				if (pattern[i + 2] === '/') {
+					regStr += '(?:.*/)?';
+					i += 2;
+				} else {
+					regStr += '.*';
+					i += 1;
+				}
+			} else {
+				regStr += '[^/]*';
+			}
+		} else if (c === '?') {
+			regStr += '[^/]';
+		} else if (/[.+^${}()|[\]\\]/.test(c)) {
+			regStr += '\\' + c;
+		} else {
+			regStr += c;
+		}
+	}
 
 	if (pattern.startsWith('/')) {
 		regStr = '^' + regStr.slice(1);
