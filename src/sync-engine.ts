@@ -129,6 +129,31 @@ export class SyncEngine {
 				let conflicts = 0;
 				let unresolvedConflicts = 0;
 				const repo = await this.getRepoName();
+
+				// `lastSyncState` describes one repository. After a switch to
+				// another repository (or user / API URL) it would make every
+				// file that is missing there look like a remote deletion.
+				// Start over instead: the first-sync logic then uploads,
+				// downloads or reports conflicts, but never deletes.
+				let repoChanged = false;
+				const repoKey = [
+					this.settings.githubApiUrl || '',
+					this.settings.githubUsername || '',
+					repo,
+				]
+					.join('|')
+					.toLowerCase();
+				if (
+					this.settings.lastSyncRepo !== undefined &&
+					this.settings.lastSyncRepo !== repoKey
+				) {
+					this.settings.lastSyncState = {};
+					repoChanged = true;
+				}
+				if (this.settings.lastSyncRepo !== repoKey) {
+					this.settings.lastSyncRepo = repoKey;
+					repoChanged = true;
+				}
 				const latestCommitSha = await this.api.getLatestCommitSha(repo);
 				const remoteTree = await this.api.getTree(
 					repo,
@@ -310,7 +335,7 @@ export class SyncEngine {
 					}
 				}
 
-				let stateChanged = false;
+				let stateChanged = repoChanged;
 				const isFirstSync =
 					Object.keys(this.settings.lastSyncState).length === 0 &&
 					remoteFiles.size > 0;

@@ -52,6 +52,8 @@ export interface GitHubSyncSettings {
   autoPullOnStartup: boolean;
   autoSyncEnabled: boolean;
   lastSyncState: Record<string, string>;
+  /** Repository `lastSyncState` belongs to (API URL, user, repo name). */
+  lastSyncRepo?: string;
   localHashCache: Record<string, LocalHashCacheItem>;
   /** Version of the hash rules the cached hashes were computed with. */
   localHashCacheVersion?: number;
