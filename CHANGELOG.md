@@ -5,6 +5,20 @@ All notable changes to SyncGit are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **Switching away from a repository and back no longer loses its sync
+  history.** The comparison base was discarded when the target repository
+  changed (issue #25), so on an A to B to A round trip a file deleted on A
+  while on B looked brand new and was uploaded again. The base is now kept
+  per repository, bounded to the five most recently used repositories:
+  returning to a previously synced repository restores its base and keeps
+  deletions working, while a repository that was never synced still starts
+  empty and deletes nothing. Settings written by 1.4.0 keep their state -
+  it is migrated into the per-repository map on the next sync.
+
 ## 1.4.0 - 2026-11-18
 
 ### Fixed
