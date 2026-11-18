@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A note skipped because it changed during a sync is now reported.** When
+  the re-check before a deletion found that the file had changed, the sync
+  correctly kept the file but recorded nothing - the status bar could say
+  "Synced" while an upload was still pending. Skipped deletes now show up as
+  skipped files with their own completion notice, like every other per-file
+  outcome. (#31)
+- **One unreadable file no longer stops the whole sync.** A read failure
+  during the re-check that guards an overwrite or a deletion aborted the
+  entire sync, while a read failure during the scan was already handled
+  per file. Both now behave the same way: the file is left untouched and
+  reported as unreadable, and the rest of the vault still syncs. (#31)
 - **Switching away from a repository and back no longer loses its sync
   history.** The comparison base was discarded when the target repository
   changed (issue #25), so on an A to B to A round trip a file deleted on A
@@ -17,7 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returning to a previously synced repository restores its base and keeps
   deletions working, while a repository that was never synced still starts
   empty and deletes nothing. Settings written by 1.4.0 keep their state -
-  it is migrated into the per-repository map on the next sync.
+  it is migrated into the per-repository map on the next sync. (#31)
+
+### Added
+
+- Regression tests for the path that was left uncovered by 1.4.0: what
+  happens after an ignore rule is removed (`tests/ignore-remote.test.cjs`),
+  plus the new re-check outcomes (`tests/recheck-outcomes.test.cjs`) and
+  per-repository state (`tests/repo-states.test.cjs`). The suite is now 141
+  tests, and every one of these fails without its fix. (#31)
 
 ## 1.4.0 - 2026-11-18
 

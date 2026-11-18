@@ -2,7 +2,7 @@
 
 **Repository:** `bhoopeshrk/sync-git` — *Headless cross-platform GitHub sync for Obsidian*
 **Status:** Complete. **1.3.0** released 2026-11-13; **1.4.0** released 2026-11-18.
-**Scope:** 12 issues (`#6`–`#13`, `#23`–`#26`), 12 upstream pull requests (`#14`–`#21`, `#27`–`#30`), two integration PRs (`#22`, and the four-way merge of `#27`–`#30`).
+**Scope:** 12 issues (`#6`–`#13`, `#23`–`#26`), 12 upstream pull requests (`#14`–`#21`, `#27`–`#30`), two integration PRs (`#22`, and the four-way merge of `#27`–`#30`), plus one follow-up PR (`#31`) closing the items in section 5.
 **Reported and fixed by:** @Morgulisan (GitHub id 12633471), together with a fix for each issue.
 
 > Sections 1–6 are the record of the **1.3.0** release. Section 7 covers the second
@@ -132,10 +132,14 @@ things in it did not match reality and have since been corrected:
 | Fragile string matching on error text | backlog | `src/sync-engine.ts` still matches `"422"` and `"rate limit"` on message text; typed errors would be cleaner |
 | Issue triage metadata | maintainer | All twelve issues had no type, priority or assignee when they were reported |
 | Malformed commit subject | maintainer | The commit that fixes issue `#13` has the subject `\` instead of a real message. Fixing it needs a history rewrite, so it was left alone. Cosmetic only |
-| Un-ignore path has no test (1.4.0) | backlog | `#28` proves the stale base is *dropped*, but nothing removes an ignore rule and asserts the follow-up conflict/upload behaviour. The claim was verified by reading `runSync()`, not by a test |
-| Delete races are silent (1.4.0) | backlog | `#30` counts a download that raced as an unresolved conflict, but a local deletion that raced is skipped with no counter, notice or log line |
-| Re-check read failure aborts the sync (1.4.0) | backlog | `#30`'s re-read fails closed (no data loss), but the error escapes the loop and aborts the whole sync, whereas the scan phase records `unreadableFiles` and continues — looser than the issue `#8` policy it shipped with |
-| Repository-switch windows (1.4.0) | backlog | `#29`: a sync that throws *after* the reset persists the cleared state (safe direction), and an A→B→A switch before any successful sync loses deletion history |
+
+**Resolved by PR `#31` (2026-11-18):** the four 1.4.0 backlog items below are all
+closed — the un-ignore path now has tests, raced deletes are reported through
+`skipped`, a re-check read failure is recorded per file instead of aborting the
+sync, and the sync state is kept per repository (so a round trip no longer loses
+history). One narrower window remains: a *pre*-1.4.0 installation with no
+`lastSyncRepo` marker that switches repositories before this version's first sync
+cannot have its old state attributed — indistinguishable, and closed by that sync.
 
 ---
 
@@ -193,7 +197,9 @@ keyword closed its issue.
   creates the release with `--generate-notes`; the body is edited afterwards to credit
   the reporter, exactly as was done for 1.3.0, because auto-generated notes cannot
   know who reported the issues.
-- **The four issues have no closing comments** (unlike `#6`–`#13`); the `Closes #N`
-  keyword closed them silently.
+- **The four issues initially had no closing comments**; the `Closes #N` keyword
+  closed them silently. They were added after the release, each pointing at its
+  own fixing pull request — the first attempt was posted on the pull requests by
+  mistake, deleted, and reposted on the issues.
 - **`minAppVersion` stays at `1.13.0`** — no new Obsidian API was used, so
   `versions.json` records `1.4.0 → 1.13.0`.
