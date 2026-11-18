@@ -17,6 +17,13 @@ import {
 } from './utils';
 import { ConflictModal } from './conflict-modal';
 
+/**
+ * How many repositories keep their comparison base in the settings. The
+ * current repository plus the most recently used ones; anything older is
+ * dropped so the map cannot grow without limit.
+ */
+const MAX_STORED_SYNC_STATES = 5;
+
 export interface SyncResult {
 	stateChanged: boolean;
 	uploaded: number;
@@ -153,11 +160,12 @@ export class SyncEngine {
 				let unresolvedConflicts = 0;
 				const repo = await this.getRepoName();
 
-				// `lastSyncState` describes one repository. After a switch to
-				// another repository (or user / API URL) it would make every
-				// file that is missing there look like a remote deletion.
-				// Start over instead: the first-sync logic then uploads,
-				// downloads or reports conflicts, but never deletes.
+				// The comparison base is kept per repository (issue #25):
+				// switching A -> B -> A must restore A's history instead of
+				// starting over, so a file deleted on A while on B stays
+				// deleted. A repository that was never synced starts with an
+				// empty base: the first-sync logic then uploads, downloads or
+				// reports conflicts, but never deletes.
 				let repoChanged = false;
 				const repoKey = [
 					this.settings.githubApiUrl || '',
@@ -166,14 +174,54 @@ export class SyncEngine {
 				]
 					.join('|')
 					.toLowerCase();
-				if (
-					this.settings.lastSyncRepo !== undefined &&
-					this.settings.lastSyncRepo !== repoKey
-				) {
-					this.settings.lastSyncState = {};
-					repoChanged = true;
+				if (!this.settings.lastSyncStates) {
+					this.settings.lastSyncStates = {};
 				}
-				if (this.settings.lastSyncRepo !== repoKey) {
+				const states = this.settings.lastSyncStates;
+				const previousRepo = this.settings.lastSyncRepo;
+				if (
+					previousRepo !== undefined &&
+					previousRepo !== repoKey &&
+					states[previousRepo] !== this.settings.lastSyncState
+				) {
+					// Leave the state of the repository being left behind under
+					// its own key, so a later switch back can restore it. This
+					// also adopts the state of a 1.4.0 installation whose
+					// marker already records a different repository.
+					states[previousRepo] = this.settings.lastSyncState;
+				}
+				let liveState = states[repoKey];
+				if (!liveState) {
+					if (
+						previousRepo === repoKey ||
+						previousRepo === undefined
+					) {
+						// Migration: settings written before `lastSyncStates`
+						// existed carry their state only in `lastSyncState`,
+						// which belongs to the recorded repository - or, when
+						// the marker is missing entirely, to the current one.
+						// Seed the map from it instead of dropping it.
+						liveState = this.settings.lastSyncState;
+					} else {
+						// Never synced this repository: start clean, so the
+						// first sync against it never deletes anything.
+						liveState = {};
+					}
+					states[repoKey] = liveState;
+				}
+				this.settings.lastSyncState = liveState;
+				// The current repository was just used: move it to the end so
+				// the pruning below drops the least recently used entry first.
+				delete states[repoKey];
+				states[repoKey] = liveState;
+				while (Object.keys(states).length > MAX_STORED_SYNC_STATES) {
+					const oldest = Object.keys(states).find(
+						(key) => key !== repoKey,
+					);
+					if (!oldest) break;
+					delete states[oldest];
+				}
+				if (previousRepo !== repoKey) {
 					this.settings.lastSyncRepo = repoKey;
 					repoChanged = true;
 				}
