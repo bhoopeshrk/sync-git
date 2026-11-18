@@ -1,7 +1,7 @@
 # Engineering handover — SyncGit 1.3.0 and 1.4.0 (both closed)
 
 **Repository:** `bhoopeshrk/sync-git` — *Headless cross-platform GitHub sync for Obsidian*
-**Status:** Complete. **1.3.0** released 2026-11-13; **1.4.0** released 2026-11-18.
+**Status:** Complete. **1.3.0** released 2026-11-13; **1.4.0** and **1.5.0** released 2026-11-18 (1.5.0 ships the follow-ups in section 5 and the per-repository state).
 **Scope:** 12 issues (`#6`–`#13`, `#23`–`#26`), 12 upstream pull requests (`#14`–`#21`, `#27`–`#30`), two integration PRs (`#22`, and the four-way merge of `#27`–`#30`), plus one follow-up PR (`#31`) closing the items in section 5.
 **Reported and fixed by:** @Morgulisan (GitHub id 12633471), together with a fix for each issue.
 
