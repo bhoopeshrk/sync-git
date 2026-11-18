@@ -26,6 +26,7 @@ export interface SyncResult {
 	unresolvedConflicts: number;
 	/** Files whose local state could not be determined; left untouched. */
 	unreadable: number;
+	/** Files the sync deliberately did not act on: over 25MB, or a local deletion kept because the file changed during the sync. */
 	skipped: number;
 	duration: number;
 }
@@ -547,15 +548,31 @@ export class SyncEngine {
 					}
 				}
 
+				const racedDeletes: string[] = [];
 				for (const path of filesToDeleteLocally) {
 					const normalizedPath = normalizeFilePath(path);
 					// The decision was made on the state at the start of the
 					// sync. If the file was edited since, keep it: the next
 					// sync sees the edit and uploads it.
-					if (
-						(await this.readLocalSha(normalizedPath)) !==
-						localHashes.get(normalizedPath)
-					) {
+					let currentSha: string | undefined;
+					try {
+						currentSha = await this.readLocalSha(normalizedPath);
+					} catch (error: unknown) {
+						// Fail closed: the local state is unknown, so the file
+						// must not be deleted. Report it like the scan does and
+						// let the next sync retry.
+						const reason =
+							error instanceof Error
+								? error.message
+								: String(error);
+						unreadablePaths.add(path);
+						unreadableFiles.push({ path, reason });
+						continue;
+					}
+					if (currentSha !== localHashes.get(normalizedPath)) {
+						// The file changed since the scan: keep it and surface
+						// the skipped delete instead of silently ignoring it.
+						racedDeletes.push(path);
 						continue;
 					}
 					const file = this.getFileFromVault(normalizedPath);
@@ -571,6 +588,7 @@ export class SyncEngine {
 				}
 
 				const racedDownloads: string[] = [];
+				const unreadableDownloads: string[] = [];
 				const totalDownloads = filesToDownload.length;
 				for (let i = 0; i < totalDownloads; i++) {
 					const path = filesToDownload[i]!;
@@ -585,10 +603,23 @@ export class SyncEngine {
 					// Leave it alone and keep the old sync state: the next sync
 					// sees local != base and remote != base and treats it as a
 					// regular conflict.
-					if (
-						(await this.readLocalSha(normalizedPath)) !==
-						localHashes.get(normalizedPath)
-					) {
+					let currentSha: string | undefined;
+					try {
+						currentSha = await this.readLocalSha(normalizedPath);
+					} catch (error: unknown) {
+						// Fail closed: the local state is unknown, so the file
+						// must not be overwritten. Report it like the scan does
+						// and let the next sync retry.
+						const reason =
+							error instanceof Error
+								? error.message
+								: String(error);
+						unreadablePaths.add(normalizedPath);
+						unreadableFiles.push({ path: normalizedPath, reason });
+						unreadableDownloads.push(path);
+						continue;
+					}
+					if (currentSha !== localHashes.get(normalizedPath)) {
 						racedDownloads.push(path);
 						conflicts++;
 						unresolvedConflicts++;
@@ -656,6 +687,9 @@ export class SyncEngine {
 				// Skipped downloads were not downloaded: keep counts and notices
 				// truthful.
 				for (const path of racedDownloads) {
+					filesToDownload.splice(filesToDownload.indexOf(path), 1);
+				}
+				for (const path of unreadableDownloads) {
 					filesToDownload.splice(filesToDownload.indexOf(path), 1);
 				}
 
@@ -762,7 +796,8 @@ export class SyncEngine {
 					!isAuto ||
 					filesToDownload.length > 0 ||
 					filesToUpload.length > 0 ||
-					skippedFiles.length > 0
+					skippedFiles.length > 0 ||
+					racedDeletes.length > 0
 				) {
 					const duration = ((Date.now() - startTime) / 1000).toFixed(
 						1,
@@ -817,6 +852,9 @@ export class SyncEngine {
 					if (skippedFiles.length > 0) {
 						msg += `\n\u26a0\ufe0f Skipped ${skippedFiles.length} file(s) exceeding 25MB limit.`;
 					}
+					if (racedDeletes.length > 0) {
+						msg += `\n\u26a0\ufe0f Skipped deleting ${racedDeletes.length} file(s) changed during the sync, kept locally.`;
+					}
 					if (unreadableFiles.length > 0) {
 						const shown = unreadableFiles
 							.slice(0, 3)
@@ -845,7 +883,7 @@ export class SyncEngine {
 					conflicts,
 					unresolvedConflicts,
 					unreadable: unreadableFiles.length,
-					skipped: skippedFiles.length,
+					skipped: skippedFiles.length + racedDeletes.length,
 					duration: Date.now() - startTime,
 				};
 			} catch (error: unknown) {

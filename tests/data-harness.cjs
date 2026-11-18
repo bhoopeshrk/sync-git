@@ -80,7 +80,18 @@ async function setup({
 	unindexed = [],
 	renameFails = false,
 	readFails = [],
+	recheckFails = [],
 } = {}) {
+	// Paths in `recheckFails` read fine during the scan but fail on every
+	// later read: this simulates a file becoming unreadable between the
+	// scan and the re-check that guards an overwrite or a deletion.
+	const recheckReads = new Map();
+	const recheckShouldFail = (p) => {
+		if (!recheckFails.includes(p)) return false;
+		const n = (recheckReads.get(p) || 0) + 1;
+		recheckReads.set(p, n);
+		return n > 1;
+	};
 	const disk = new Map(
 		Object.entries(local).map(([p, s]) => [
 			p,
@@ -112,6 +123,8 @@ async function setup({
 		stat: async (p) => (disk.has(p) ? { ...disk.get(p).stat, type: 'file' } : null),
 		readBinary: async (p) => {
 			if (readFails.includes(p)) throw Error('synthetic read error');
+			if (recheckShouldFail(p))
+				throw Error('synthetic re-check read error');
 			return disk.get(p).buffer;
 		},
 		writeBinary: async (p, b) => {
@@ -134,7 +147,11 @@ async function setup({
 		adapter,
 		getFiles: () => [...disk.values()].filter((f) => !unindexed.includes(f.path)),
 		getAbstractFileByPath: (p) => (unindexed.includes(p) ? null : disk.get(p)),
-		readBinary: async (f) => f.buffer,
+		readBinary: async (f) => {
+			if (recheckShouldFail(f.path))
+				throw Error('synthetic re-check read error');
+			return f.buffer;
+		},
 		modifyBinary: async (f, b) => {
 			f.buffer = b;
 			f.stat = { mtime: 2, size: b.byteLength };
