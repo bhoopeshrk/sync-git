@@ -22,6 +22,8 @@ SyncGit is a community plugin that keeps your Obsidian vault synchronized across
 - **Smart delta hashing** — unmodified files are skipped using metadata timestamps
 - **Binary-safe uploads** — images, audio, video and other binary files are transferred byte for byte, never re-encoded
 - **Safe by default** — a file that cannot be read is left untouched instead of being deleted from the repository
+- **Edit-safe downloads** — a note edited while a sync is running is never overwritten; the edit is kept and reported as an unresolved conflict
+- **Ignore rules in both directions** — ignored paths are excluded from upload, download and deletion on the remote side too
 - **Large file protection** — files exceeding 25 MB are automatically skipped
 - **Concurrent edit retries** — automatic retry up to 3 times on race conditions
 - **Dynamic status bar** — real-time sync state at the bottom of Obsidian

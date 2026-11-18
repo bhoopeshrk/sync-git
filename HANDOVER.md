@@ -1,13 +1,13 @@
-# Engineering handover — SyncGit 1.3.0 (closed)
+# Engineering handover — SyncGit 1.3.0 and 1.4.0 (both closed)
 
 **Repository:** `bhoopeshrk/sync-git` — *Headless cross-platform GitHub sync for Obsidian*
-**Status:** Complete. Released as **1.3.0** on 2026-11-13.
-**Scope:** 8 issues (`#6`–`#13`), 8 upstream pull requests (`#14`–`#21`), one integration PR (`#22`).
+**Status:** Complete. **1.3.0** released 2026-11-13; **1.4.0** released 2026-11-18.
+**Scope:** 12 issues (`#6`–`#13`, `#23`–`#26`), 12 upstream pull requests (`#14`–`#21`, `#27`–`#30`), two integration PRs (`#22`, and the four-way merge of `#27`–`#30`).
 **Reported and fixed by:** @Morgulisan (GitHub id 12633471), together with a fix for each issue.
 
-> This document replaces the pre-release handover, which described all eight issues as
-> open. It is the record of *what was decided*, *what was verified* and *what is still
-> open* — not a task list.
+> Sections 1–6 are the record of the **1.3.0** release. Section 7 covers the second
+> batch, released as **1.4.0**. Together they record *what was decided*, *what was
+> verified* and *what is still open* — not a task list.
 
 ---
 
@@ -130,8 +130,12 @@ things in it did not match reality and have since been corrected:
 | Files corrupted on every device | user | Not repairable by the plugin; restore from an earlier commit. Documented in `CHANGELOG.md` |
 | Contributor attribution in the git history | @Morgulisan | The harness commit keeps their authorship. The individual pull requests `#14`–`#21` are closed with a pointer to `#22`; they can be rebased onto `main` and reopened if they want their commits in the history |
 | Fragile string matching on error text | backlog | `src/sync-engine.ts` still matches `"422"` and `"rate limit"` on message text; typed errors would be cleaner |
-| Issue triage metadata | maintainer | The eight issues had no type, priority or assignee when they were reported |
+| Issue triage metadata | maintainer | All twelve issues had no type, priority or assignee when they were reported |
 | Malformed commit subject | maintainer | The commit that fixes issue `#13` has the subject `\` instead of a real message. Fixing it needs a history rewrite, so it was left alone. Cosmetic only |
+| Un-ignore path has no test (1.4.0) | backlog | `#28` proves the stale base is *dropped*, but nothing removes an ignore rule and asserts the follow-up conflict/upload behaviour. The claim was verified by reading `runSync()`, not by a test |
+| Delete races are silent (1.4.0) | backlog | `#30` counts a download that raced as an unresolved conflict, but a local deletion that raced is skipped with no counter, notice or log line |
+| Re-check read failure aborts the sync (1.4.0) | backlog | `#30`'s re-read fails closed (no data loss), but the error escapes the loop and aborts the whole sync, whereas the scan phase records `unreadableFiles` and continues — looser than the issue `#8` policy it shipped with |
+| Repository-switch windows (1.4.0) | backlog | `#29`: a sync that throws *after* the reset persists the cleared state (safe direction), and an A→B→A switch before any successful sync loses deletion history |
 
 ---
 
@@ -145,3 +149,51 @@ things in it did not match reality and have since been corrected:
 - The eight issues each carry a closing comment pointing at PR `#22` and the changelog.
 - The published history of `1.3.0` is intact: no commit was rewritten and the tag still
   points at the commit that was released.
+
+---
+
+## 7. Second batch — released as 1.4.0
+
+Four issues and four pull requests, opened by the same contributor two days after
+1.3.0, mapped 1:1 with no overlap. Merged 2026-11-18 in the order #27 → #28 → #29 → #30,
+each as a merge commit, so every pull request recorded as merged and its `Closes #N`
+keyword closed its issue.
+
+### 7.1 Outcome
+
+| Issue | Severity | Fix | Regression test | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| [#23](https://github.com/bhoopeshrk/sync-git/issues/23) Edits made during a sync are overwritten | P0 data loss | The local file is re-read immediately before it is written or deleted. A raced download is kept and counted as an unresolved conflict; a raced deletion is left alone and uploaded instead | `tests/overwrite-race.test.cjs` | Fixed, closed |
+| [#24](https://github.com/bhoopeshrk/sync-git/issues/24) Ignore rules not applied to remote files | P0 data loss | Ignored paths are dropped from the remote file list and from `lastSyncState` before the comparison, so they are never uploaded, downloaded or deleted | `tests/ignore-remote.test.cjs` | Fixed, closed |
+| [#25](https://github.com/bhoopeshrk/sync-git/issues/25) Repository switch reuses old sync state | P0 data loss | `lastSyncRepo` records which repository the state belongs to; a change clears the base so the switch only uploads, downloads or conflicts — never deletes | `tests/repo-switch.test.cjs` | Fixed, closed |
+| [#26](https://github.com/bhoopeshrk/sync-git/issues/26) `**` in ignore patterns translated wrongly | P2 | `globToRegex()` rewritten as a single-pass character loop: `**` matches any number of segments including none, and the single-`*` rule no longer rewrites its output | `tests/glob-recursive.test.cjs` | Fixed, closed |
+
+### 7.2 Decisions and verification
+
+- **Merge order.** Any order was textually safe — all six pairs merged clean and the
+  four-way merge produced one tree. #27 went first because a wrong glob now also decides
+  what is hidden from the remote side, which is what #28 filters.
+- **Both agents' predicted conflicts were wrong.** #28 and #29 were expected to collide in
+  the `lastSyncState` region of `runSync()`. `git merge-tree` reported clean and the
+  merged tree was byte-identical to the pre-tested one (`3fe2211c…`), because #28's
+  pruning sits *after* `stateChanged = repoChanged`, so neither flag is lost.
+- **Fail-without-fix, re-derived independently:** each PR's tests were run with `src/`
+  reverted to `main`. Every one failed (4 each, 16 total) and passed again on restore.
+  Control tests passed on `main`, so the tests genuinely discriminate.
+- **Combined suite before merging:** 129 tests, 102 of them pre-existing, all passing,
+  with `tsc` and `eslint` clean. The same 129 passed on the merged `main`, and CI runs
+  54–57 (one per merge commit) were green on Node 20.x, 22.x and 24.x.
+- **Fail-closed held under scrutiny:** `readLocalSha()` returns `undefined` only when
+  `adapter.exists()` is false, so a read *error* throws rather than being read as
+  "deleted" — the delete path can never act on an unknown state.
+
+### 7.3 What was deliberately not done
+
+- **Release notes are generated, then credited.** `.github/workflows/release.yml`
+  creates the release with `--generate-notes`; the body is edited afterwards to credit
+  the reporter, exactly as was done for 1.3.0, because auto-generated notes cannot
+  know who reported the issues.
+- **The four issues have no closing comments** (unlike `#6`–`#13`); the `Closes #N`
+  keyword closed them silently.
+- **`minAppVersion` stays at `1.13.0`** — no new Obsidian API was used, so
+  `versions.json` records `1.4.0 → 1.13.0`.

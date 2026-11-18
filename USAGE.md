@@ -96,13 +96,34 @@ Best for users who prefer strict, repo-scoped permissions or corporate security 
 
 ## Ignore patterns
 
-Files matching ignore patterns are excluded from upload and download.
+Files matching ignore patterns are excluded from **both directions**: they are
+never uploaded to the repository and never downloaded from it, and they are
+never deleted from either side because of a sync.
 
 ### Managing patterns in settings
 
 You can add or remove ignore patterns directly within **Settings → SyncGit → Ignored patterns**:
 - Type a glob pattern (e.g. `*.log`, `private/`, `.trash/`) in the input box and select **Add**.
 - Select the **✕** button on any pattern tag to remove it.
+
+### Pattern syntax
+
+| Pattern | Matches |
+| :--- | :--- |
+| `*.log` | Any `.log` file in any folder |
+| `private/` | The `private` folder and everything inside it |
+| `private/**/*.md` | Markdown files anywhere under `private`, **including** `private/note.md` |
+| `a/**/b` | `a/b`, `a/x/b`, `a/x/y/b` — zero or more folders in between |
+| `.obsidian/workspace.json` | One specific path |
+
+`*` matches within a single path segment (it never crosses `/`), `**` matches
+any number of segments including none, and `?` matches a single character.
+
+### Removing a pattern
+
+When you remove a pattern, the file starts from a fresh comparison rather than
+from the state it had before it was ignored. If it has changed on both sides
+since then, the sync reports a conflict instead of silently picking one version.
 
 ### Using `.obsidian-sync-ignore`
 

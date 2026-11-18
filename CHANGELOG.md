@@ -5,6 +5,58 @@ All notable changes to SyncGit are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.4.0 - 2026-11-18
+
+### Fixed
+
+- **Ignore rules now apply to the remote side as well.** Patterns were only
+  applied to the local file list, so a path ignored on this device still
+  reached the comparison against the repository with no local copy and a
+  matching base - the "deleted locally" case. The deletion was committed to
+  GitHub and then followed by every other device. The same gap let files
+  excluded by the built-in `.obsidian/` rule be downloaded over local ones.
+  Ignored paths are now dropped from the remote file list and from the saved
+  sync state before the comparison, so they are never uploaded, downloaded or
+  deleted. Removing a pattern later starts from a clean base instead of a
+  stale one: if both sides still differ, the file goes through the normal
+  conflict flow rather than being silently overwritten. (#24)
+- **Recursive ignore patterns match correctly.** `**` was translated to
+  `.*` and then rewritten again by the single-`*` rule into `.[^/]*`, and
+  `/**/` required at least one directory. `private/**/*.md` therefore never
+  matched `private/note.md`. Glob patterns now follow the usual semantics:
+  `**` matches any number of directories, including none, and a leading
+  `**/` matches at any depth. (#26)
+- **Changing the target repository no longer reuses the old sync state.**
+  The comparison base was kept when the repository, GitHub user or API URL
+  changed. Against the new repository a file that existed locally and in the
+  old base but not remotely looked like "deleted remotely" and was moved to
+  the trash - deleting local notes on every device. The sync now records
+  which repository the state was recorded for and starts a fresh comparison
+  when it changes: nothing is deleted on the switch, differences are
+  reported as conflicts, and an existing installation without that record
+  keeps its state. (#25)
+- **A note edited while a sync is running is no longer overwritten.** Which
+  files to download or delete was decided from a snapshot taken at the start
+  of the sync, and the download loop wrote the remote bytes without looking
+  at the local file again. An edit made during the download - or while a
+  conflict dialog was open - was silently destroyed. The local file is now
+  re-read immediately before it is written or deleted. A download that raced
+  is kept as it is, counted as an unresolved conflict and resolved by the
+  next sync; a local deletion that raced is left alone and uploaded instead.
+  (#23)
+
+### Added
+
+- Offline regression tests for all four fixes (`npm test`, now 129 tests),
+  each of which fails on the unfixed code: `tests/glob-recursive.test.cjs`,
+  `tests/ignore-remote.test.cjs`, `tests/repo-switch.test.cjs` and
+  `tests/overwrite-race.test.cjs`.
+
+### Credits
+
+All four issues in this release were reported by @Morgulisan, together with
+a fix for each one, in pull requests #27 to #30.
+
 ## 1.3.0 - 2026-11-13
 
 ### Fixed
