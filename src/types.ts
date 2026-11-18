@@ -54,6 +54,9 @@ export interface GitHubSyncSettings {
   lastSyncState: Record<string, string>;
   /** Repository `lastSyncState` belongs to (API URL, user, repo name). */
   lastSyncRepo?: string;
+  /** `lastSyncState` per repository key, so switching away and back
+   * (A -> B -> A) restores the repository's own comparison base. */
+  lastSyncStates?: Record<string, Record<string, string>>;
   localHashCache: Record<string, LocalHashCacheItem>;
   /** Version of the hash rules the cached hashes were computed with. */
   localHashCacheVersion?: number;
@@ -73,6 +76,7 @@ export const DEFAULT_SETTINGS: GitHubSyncSettings = {
   autoPullOnStartup: true,
   autoSyncEnabled: true,
   lastSyncState: {},
+  lastSyncStates: {},
   localHashCache: {},
   // 0 means "no cache yet": the first sync fills it with the current rules.
   localHashCacheVersion: 0,
