@@ -81,6 +81,8 @@ async function setup({
 	renameFails = false,
 	readFails = [],
 } = {}) {
+	// Mutable so a test can remove the ignore rule between two syncs.
+	let ignoreRules = ignore;
 	const disk = new Map(
 		Object.entries(local).map(([p, s]) => [
 			p,
@@ -106,7 +108,7 @@ async function setup({
 	for (const [p, s] of Object.entries(base)) settings.lastSyncState[p] = await hash(buf(s));
 	const log = [];
 	const adapter = {
-		read: async () => ignore,
+		read: async () => ignoreRules,
 		list: async () => ({ files: [...disk.keys()].filter((p) => !p.includes('/')) }),
 		exists: async (p) => disk.has(p),
 		stat: async (p) => (disk.has(p) ? { ...disk.get(p).stat, type: 'file' } : null),
@@ -198,6 +200,9 @@ async function setup({
 		blobs,
 		log,
 		text: (p) => new TextDecoder().decode(disk.get(p)?.buffer),
+		setIgnore: (rules) => {
+			ignoreRules = rules;
+		},
 	};
 }
 module.exports = {
