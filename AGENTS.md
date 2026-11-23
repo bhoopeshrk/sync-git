@@ -239,8 +239,8 @@ test('a file that cannot be read is not deleted remotely', async () => {
 });
 ```
 
-- `setup()` options: `local`, `remote`, `base` (the last synced state), `unindexed` (paths outside the Obsidian index), `renameFails`, `readFails`.
-- The fixture exposes `x.settings` (persisted settings), `x.tree` (the remote tree), `x.blobs`, `x.log` (recorded operations), `x.disk` (local files) and `x.text(path)`.
+- `setup()` options: `local`, `remote`, `base` (the last synced state), `unindexed` (paths outside the Obsidian index), `renameFails`, `readFails`, `recheckFails`, `folders` (extra local folders, e.g. an empty one; parents of local files exist already).
+- The fixture exposes `x.settings` (persisted settings), `x.tree` (the remote tree), `x.blobs`, `x.log` (recorded operations), `x.disk` (local files), `x.folders` (local folders; deleting a file keeps its folder, as on a real disk) and `x.text(path)`.
 - Use `tests/runtime-harness.cjs` for the plugin runtime: `harness()` returns the notices, intervals, modals and a `plugin()` instance.
 
 ### Organize code across multiple files

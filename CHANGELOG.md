@@ -5,6 +5,20 @@ All notable changes to SyncGit are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **A folder renamed or deleted on another device no longer stays behind
+  empty.** Git stores files, not folders, so a renamed folder reaches this
+  device only as "these files were deleted, these were added". The files
+  moved, but the old folder was kept, and the vault showed both names. After
+  a sync deletes files, the folders it emptied are now removed too, using the
+  same trash setting as deleted files. A folder is removed only when it is
+  completely empty: a folder that still holds any file - including hidden or
+  ignored files the vault does not show - is kept, and empty folders the sync
+  did not touch are left alone.
+
 ## 1.5.0 - 2026-11-18
 
 ### Fixed

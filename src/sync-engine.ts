@@ -1,4 +1,4 @@
-import { App, Notice, TFile } from 'obsidian';
+import { App, Notice, TFile, TFolder } from 'obsidian';
 import { GitHubApiClient } from './github-api';
 import {
 	GitHubSyncSettings,
@@ -597,6 +597,7 @@ export class SyncEngine {
 				}
 
 				const racedDeletes: string[] = [];
+				const deletedLocally: string[] = [];
 				for (const path of filesToDeleteLocally) {
 					const normalizedPath = normalizeFilePath(path);
 					// The decision was made on the state at the start of the
@@ -631,6 +632,7 @@ export class SyncEngine {
 					) {
 						await this.app.vault.adapter.remove(normalizedPath);
 					}
+					deletedLocally.push(normalizedPath);
 					delete this.settings.lastSyncState[path];
 					stateChanged = true;
 				}
@@ -740,6 +742,10 @@ export class SyncEngine {
 				for (const path of unreadableDownloads) {
 					filesToDownload.splice(filesToDownload.indexOf(path), 1);
 				}
+
+				// Runs after the downloads, so a folder that lost its old files
+				// but received new ones in the same sync is kept.
+				await this.removeEmptiedFolders(deletedLocally);
 
 				if (
 					filesToUpload.length > 0 ||
@@ -1017,6 +1023,54 @@ export class SyncEngine {
 				}
 			}).open();
 		});
+	}
+
+	/**
+	 * Removes the folders this sync emptied by deleting their last file.
+	 *
+	 * Git has no folders, so when another device renames or deletes a folder
+	 * the remote only reports its files as deleted. Without this step the
+	 * folder stays behind empty, and a renamed folder shows up twice.
+	 *
+	 * Only folders that held a file deleted by this sync, and their parents,
+	 * are considered. A folder is removed only when the adapter lists nothing
+	 * in it, so hidden and ignored files (which the vault index does not show)
+	 * keep it. Any error leaves the folder in place.
+	 */
+	private async removeEmptiedFolders(deletedPaths: string[]): Promise<void> {
+		const candidates = new Set<string>();
+		for (const path of deletedPaths) {
+			const parts = path.split('/');
+			parts.pop();
+			while (parts.length > 0) {
+				candidates.add(parts.join('/'));
+				parts.pop();
+			}
+		}
+		// Deepest first, so a parent is checked after its children are gone.
+		const ordered = [...candidates].sort(
+			(a, b) => b.split('/').length - a.split('/').length,
+		);
+		const adapter = this.app.vault.adapter;
+		for (const folder of ordered) {
+			try {
+				if (!(await adapter.exists(folder))) continue;
+				const listing = await adapter.list(folder);
+				if (listing.files.length > 0 || listing.folders.length > 0) {
+					continue;
+				}
+				const indexed = this.app.vault.getAbstractFileByPath(folder);
+				if (indexed instanceof TFolder) {
+					// Same path as deleted files: respects the user's trash
+					// setting. The folder was listed empty just above.
+					await this.app.fileManager.trashFile(indexed);
+				} else {
+					await adapter.rmdir(folder, false);
+				}
+			} catch {
+				// Fail closed: an empty folder left behind is harmless.
+			}
+		}
 	}
 
 	private async ensureDirectoryExists(path: string): Promise<void> {
