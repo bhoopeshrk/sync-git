@@ -1,13 +1,14 @@
-# Engineering handover — SyncGit 1.3.0 and 1.4.0 (both closed)
+# Engineering handover - SyncGit 1.3.0 to 1.6.0 (all closed)
 
 **Repository:** `bhoopeshrk/sync-git` — *Headless cross-platform GitHub sync for Obsidian*
-**Status:** Complete. **1.3.0** released 2026-11-13; **1.4.0** and **1.5.0** released 2026-11-18 (1.5.0 ships the follow-ups in section 5 and the per-repository state).
-**Scope:** 12 issues (`#6`–`#13`, `#23`–`#26`), 12 upstream pull requests (`#14`–`#21`, `#27`–`#30`), two integration PRs (`#22`, and the four-way merge of `#27`–`#30`), plus one follow-up PR (`#31`) closing the items in section 5.
-**Reported and fixed by:** @Morgulisan (GitHub id 12633471), together with a fix for each issue.
+**Status:** Complete. **1.3.0** released 2026-11-13; **1.4.0** and **1.5.0** released 2026-11-18 (1.5.0 ships the follow-ups in section 5 and the per-repository state); **1.6.0** released 2026-11-24 (section 8).
+**Scope:** 12 issues (`#6`–`#13`, `#23`–`#26`), 13 pull requests (`#14`–`#21`, `#27`–`#30`, `#32`), two integration PRs (`#22`, and the four-way merge of `#27`–`#30`), plus one follow-up PR (`#31`) closing the items in section 5.
+**Reported and fixed by:** @Morgulisan (GitHub id 12633471) for issues `#6`–`#13` and `#23`–`#26`, together with a fix for each; @changstudio (GitHub id 115962957) for the empty-folder fix in `#32`.
 
-> Sections 1–6 are the record of the **1.3.0** release. Section 7 covers the second
-> batch, released as **1.4.0**. Together they record *what was decided*, *what was
-> verified* and *what is still open* — not a task list.
+> Sections 1–6 are the record of the **1.3.0** release, section 7 the second
+> batch (**1.4.0**), and section 8 the third contribution (**1.6.0**). Together
+> they record *what was decided*, *what was verified* and *what is still open*
+> — not a task list.
 
 ---
 
@@ -132,6 +133,8 @@ things in it did not match reality and have since been corrected:
 | Fragile string matching on error text | backlog | `src/sync-engine.ts` still matches `"422"` and `"rate limit"` on message text; typed errors would be cleaner |
 | Issue triage metadata | maintainer | All twelve issues had no type, priority or assignee when they were reported |
 | Malformed commit subject | maintainer | The commit that fixes issue `#13` has the subject `\` instead of a real message. Fixing it needs a history rewrite, so it was left alone. Cosmetic only |
+| Folder-removal race (1.6.0) | backlog | Between `adapter.list` reporting a folder empty and `trashFile`/`rmdir` acting on it, an externally created file would be trashed with it (`rmdir` throws and keeps it; `trashFile` moves it to the user's trash — recoverable). Microseconds wide, needs a concurrent writer during sync; the folder-level analogue of the file-level re-checks from #30 |
+| Empty-folder fix untested on a device (1.6.0) | user | Verified only in the offline harness; the contributor disclosed this in the PR. Worth one manual folder rename on a real vault before trusting it fully |
 
 **Resolved by PR `#31` (2026-11-18):** the four 1.4.0 backlog items below are all
 closed — the un-ignore path now has tests, raced deletes are reported through
@@ -203,3 +206,41 @@ keyword closed its issue.
   mistake, deleted, and reposted on the issues.
 - **`minAppVersion` stays at `1.13.0`** — no new Obsidian API was used, so
   `versions.json` records `1.4.0 → 1.13.0`.
+
+---
+
+## 8. Third contribution - released as 1.6.0
+
+PR [`#32`](https://github.com/bhoopeshrk/sync-git/pull/32) by **@changstudio**
+(GitHub id 115962957), opened 2026-11-23 and merged 2026-11-24 as `a2eb04e`.
+It was reported directly as a pull request — no issue exists — and is
+SyncGit's first contribution from outside the project. Generated with Claude
+Code, disclosed in the PR body.
+
+### 8.1 Outcome
+
+| Change | Regression test | Status |
+| :--- | :--- | :--- |
+| A folder emptied by a sync (renamed or deleted on another device) is now removed with it — via `fileManager.trashFile` for indexed folders, `adapter.rmdir` for unindexed ones — but only when `adapter.list` shows it completely empty, so hidden/ignored files, folders the sync did not touch, and folders whose deletion was skipped all keep theirs | `tests/empty-folders.test.cjs` (7 tests) | Merged, released |
+
+### 8.2 Decisions and verification
+
+- **Approved the fork's workflow run first.** A first-time contributor's PR sits
+  at `action_required` until a maintainer approves; run 64 was green after that.
+  (The approve REST endpoint takes the run *id*, not the run *number* — the
+  first attempt 404'd on the number.)
+- **Teeth re-derived independently:** with `src/` reverted to `5c61591` (1.5.0),
+  exactly 3 of the 7 new tests fail — the folder-rename, folder-chain and
+  untouched-empty-folder cases — matching the contributor's stated 4 pass / 3
+  fail split.
+- **The harness change was reviewed as production code**, because it is: the old
+  `list()` ignored its directory argument and always returned root files; folders
+  now exist as entities, `exists()` recognises them, and writes create parents as
+  on a real disk. No existing test file was modified and all 141 pre-existing
+  tests pass against it.
+- **Combined result:** 148 tests, `tsc` and `eslint` clean, merged tree
+  byte-identical to the tested tree (`d5caeaf4…`), CI run 65 green on the merge
+  commit.
+- **Two follow-ups recorded in section 5** rather than blocking the merge: the
+  folder-removal TOCTOU window, and the contributor's own disclosure that the
+  fix has not been run on a real device yet.

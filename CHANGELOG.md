@@ -5,7 +5,7 @@ All notable changes to SyncGit are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.6.0 - 2026-11-24
 
 ### Fixed
 
@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completely empty: a folder that still holds any file - including hidden or
   ignored files the vault does not show - is kept, and empty folders the sync
   did not touch are left alone.
+
+### Added
+
+- The offline test harness now models folders the way a real disk does -
+  deleting a file keeps its folder - so folder behaviour is testable at all
+  (`tests/empty-folders.test.cjs`, 7 tests, each failing without the fix).
+  The suite is now 148 tests.
+
+### Credits
+
+The issue and the fix came from @changstudio, together with a regression test
+suite and an evidence block, in pull request #32 - SyncGit's first
+contribution from outside the project.
 
 ## 1.5.0 - 2026-11-18
 
