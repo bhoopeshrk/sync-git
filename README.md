@@ -122,6 +122,17 @@ GitHub Actions will automatically build production assets (`main.js`, `manifest.
 
 ---
 
+## Contributors
+
+Thanks to everyone who has reported a problem or sent a fix:
+
+- [@Morgulisan](https://github.com/Morgulisan) — reported and fixed 12 data-loss and correctness issues across releases 1.3.0, 1.4.0 and 1.5.0 (pull requests #14–#21 and #27–#30), each with a regression test that fails without it.
+- [@changstudio](https://github.com/changstudio) — fixed the empty folders left behind when a folder is renamed on another device, with a folder-modelling test harness and 7 regression tests (pull request #32, released in 1.6.0).
+
+Every contribution is credited in `CHANGELOG.md` and in the GitHub release notes.
+
+---
+
 ## License
 
 MIT © Bhoopesh R K
