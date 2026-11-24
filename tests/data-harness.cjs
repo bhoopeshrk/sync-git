@@ -12,6 +12,11 @@ class TFile {
 		this.stat = { size: buffer.byteLength, mtime: 1 };
 	}
 }
+class TFolder {
+	constructor(path) {
+		this.path = path;
+	}
+}
 let choice = 'both';
 class ConflictModal {
 	constructor(app, info, cb) {
@@ -24,6 +29,7 @@ class ConflictModal {
 const modules = {};
 const obsidian = {
 	TFile,
+	TFolder,
 	Notice: class {},
 	normalizePath: (p) => p.replace(/\\/g, '/'),
 	moment: () => ({ format: () => '2026-11-10' }),
@@ -81,6 +87,7 @@ async function setup({
 	renameFails = false,
 	readFails = [],
 	recheckFails = [],
+	folders: extraFolders = [],
 } = {}) {
 	// Mutable so a test can remove the ignore rule between two syncs.
 	let ignoreRules = ignore;
@@ -100,6 +107,33 @@ async function setup({
 			new TFile(p, typeof s === 'string' ? buf(s) : s),
 		]),
 	);
+	// Folders exist on their own, as on a real disk: deleting a folder's last
+	// file leaves the folder. They start as the parents of the local files
+	// plus `folders` (e.g. an already empty folder).
+	const folders = new Set();
+	const addParents = (p) => {
+		const parts = p.split('/');
+		parts.pop();
+		while (parts.length > 0) {
+			folders.add(parts.join('/'));
+			parts.pop();
+		}
+	};
+	for (const p of disk.keys()) addParents(p);
+	for (const f of extraFolders) {
+		folders.add(f);
+		addParents(f);
+	}
+	const children = (dir) => {
+		const inside = (p) =>
+			dir === ''
+				? !p.includes('/')
+				: p.startsWith(dir + '/') && !p.slice(dir.length + 1).includes('/');
+		return {
+			files: [...disk.keys()].filter(inside),
+			folders: [...folders].filter(inside),
+		};
+	};
 	const blobs = new Map(),
 		tree = new Map();
 	for (const [p, s] of Object.entries(remote)) {
@@ -120,8 +154,8 @@ async function setup({
 	const log = [];
 	const adapter = {
 		read: async () => ignoreRules,
-		list: async () => ({ files: [...disk.keys()].filter((p) => !p.includes('/')) }),
-		exists: async (p) => disk.has(p),
+		list: async (dir) => children(dir),
+		exists: async (p) => disk.has(p) || folders.has(p),
 		stat: async (p) => (disk.has(p) ? { ...disk.get(p).stat, type: 'file' } : null),
 		readBinary: async (p) => {
 			if (readFails.includes(p)) throw Error('synthetic read error');
@@ -130,12 +164,20 @@ async function setup({
 			return disk.get(p).buffer;
 		},
 		writeBinary: async (p, b) => {
+			addParents(p);
 			disk.set(p, new TFile(p, b));
 			log.push(['write', p]);
 		},
 		remove: async (p) => {
 			disk.delete(p);
 			log.push(['remove', p]);
+		},
+		rmdir: async (p, recursive) => {
+			const c = children(p);
+			if (!recursive && (c.files.length > 0 || c.folders.length > 0))
+				throw Error('folder not empty');
+			folders.delete(p);
+			log.push(['rmdir', p]);
 		},
 		rename: async (p, q) => {
 			if (renameFails) throw Error('synthetic rename error');
@@ -148,7 +190,10 @@ async function setup({
 		configDir: '.obsidian',
 		adapter,
 		getFiles: () => [...disk.values()].filter((f) => !unindexed.includes(f.path)),
-		getAbstractFileByPath: (p) => (unindexed.includes(p) ? null : disk.get(p)),
+		getAbstractFileByPath: (p) =>
+			unindexed.includes(p)
+				? null
+				: (disk.get(p) ?? (folders.has(p) ? new TFolder(p) : null)),
 		readBinary: async (f) => {
 			if (recheckShouldFail(f.path))
 				throw Error('synthetic re-check read error');
@@ -161,10 +206,15 @@ async function setup({
 		},
 		createBinary: async (p, b) => {
 			if (disk.has(p)) throw Error('already exists');
+			addParents(p);
 			disk.set(p, new TFile(p, b));
 			log.push(['create', p]);
 		},
-		createFolder: async () => {},
+		createFolder: async (p) => {
+			folders.add(p);
+			addParents(p);
+		},
+
 		rename: async (f, q) => adapter.rename(f.path, q),
 	};
 	const api = {
@@ -200,7 +250,8 @@ async function setup({
 			vault,
 			fileManager: {
 				trashFile: async (f) => {
-					disk.delete(f.path);
+					if (f instanceof TFolder) folders.delete(f.path);
+					else disk.delete(f.path);
 					log.push(['trash', f.path]);
 				},
 			},
@@ -213,6 +264,7 @@ async function setup({
 		settings,
 		api,
 		disk,
+		folders,
 		tree,
 		blobs,
 		log,
