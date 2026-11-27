@@ -81,6 +81,7 @@ Best for users who prefer strict, repo-scoped permissions or corporate security 
 | Setting | Description |
 | :--- | :--- |
 | **Auto sync on startup** | Run a full bidirectional sync when Obsidian opens, including uploads, downloads and deletions. Independent of the periodic auto sync. |
+| **Sync when Obsidian returns** | Run a full sync each time Obsidian comes back to the foreground, unless the last sync finished under 30 seconds ago. On iOS and Android the periodic sync stops while the app is in the background and the startup sync only runs on a fresh launch, so this is what keeps a phone up to date. On by default. |
 | **Auto sync enabled** | Periodically commit local changes and pull remote updates. |
 | **Sync frequency** | Choose the background sync interval (Every 1, 5, 15, 30, 60 minutes, 12 hours, 24 hours, or Disabled). |
 

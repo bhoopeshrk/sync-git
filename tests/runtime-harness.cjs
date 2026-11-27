@@ -59,7 +59,11 @@ function harness() {
 		}
 	}
 	const obsidian = {
-		Plugin: class {},
+		Plugin: class {
+			// Obsidian removes these listeners on unload; tests that need the
+			// handler replace this stub to capture it.
+			registerDomEvent() {}
+		},
 		PluginSettingTab: class {
 			constructor(app, plugin) {
 				this.app = app;
@@ -96,6 +100,7 @@ function harness() {
 		console,
 		AbortController,
 		Date,
+		document: { visibilityState: 'visible' },
 		navigator: {
 			onLine: true,
 			clipboard: {

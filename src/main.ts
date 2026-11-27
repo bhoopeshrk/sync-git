@@ -13,6 +13,8 @@ export default class GitHubSyncPlugin extends Plugin {
 	private syncIntervalId: number | null = null;
 	private syncing = false;
 	private lastLeafChange = 0;
+	/** A return to the foreground within this long of the last sync is skipped. */
+	static readonly RESUME_MIN_GAP_MS = 30_000;
 
 	async onload() {
 		await this.loadSettings();
@@ -63,6 +65,13 @@ export default class GitHubSyncPlugin extends Plugin {
 				void this.triggerSync(true);
 			this.setupScheduler();
 		});
+
+		// Mobile systems pause a backgrounded app, timers included, and bring
+		// it back without restarting it: neither the periodic interval nor the
+		// startup sync runs then. Returning to the foreground is the only signal.
+		this.registerDomEvent(document, 'visibilitychange', () =>
+			this.handleVisibilityChange(document.visibilityState),
+		);
 
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', () => {
@@ -292,6 +301,19 @@ export default class GitHubSyncPlugin extends Plugin {
 	}
 
 
+
+	/**
+	 * Sync when Obsidian becomes visible again after being in the background.
+	 * Independent of the periodic schedule, like the startup sync. A return
+	 * shortly after a sync is skipped so quick app switches do not each sync.
+	 */
+	handleVisibilityChange(state: DocumentVisibilityState, now = Date.now()) {
+		if (state !== 'visible' || !this.settings.syncOnResume) return;
+		if (!this.canSync()) return;
+		if (now - this.settings.lastSyncTime < GitHubSyncPlugin.RESUME_MIN_GAP_MS)
+			return;
+		void this.triggerSync(true);
+	}
 
 	setupScheduler() {
 		if (this.syncIntervalId) window.clearInterval(this.syncIntervalId);
