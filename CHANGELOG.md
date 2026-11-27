@@ -5,6 +5,19 @@ All notable changes to SyncGit are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- **Sync when Obsidian returns to the foreground.** On iOS and Android a
+  backgrounded Obsidian is paused, timers included, and comes back without
+  restarting: the periodic sync never fires while it is away and the startup
+  sync does not run again, so a phone only caught up on a fresh launch or a
+  manual sync. A new setting, **Sync when Obsidian returns** (on by default,
+  under Sync schedule), runs a sync each time the app becomes visible again,
+  unless the last sync finished under 30 seconds ago. It is independent of
+  the periodic auto sync, like the startup sync.
+
 ## 1.6.0 - 2026-11-24
 
 ### Fixed

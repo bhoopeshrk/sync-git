@@ -50,6 +50,8 @@ export interface GitHubSyncSettings {
   dateTimeFormat: string;
   syncFrequencyMinutes: number;
   autoPullOnStartup: boolean;
+  /** Sync when Obsidian comes back to the foreground (see `handleVisibilityChange`). */
+  syncOnResume: boolean;
   autoSyncEnabled: boolean;
   lastSyncState: Record<string, string>;
   /** Repository `lastSyncState` belongs to (API URL, user, repo name). */
@@ -74,6 +76,7 @@ export const DEFAULT_SETTINGS: GitHubSyncSettings = {
   dateTimeFormat: 'YYYY-MM-DD HH:mm:ss',
   syncFrequencyMinutes: 15,
   autoPullOnStartup: true,
+  syncOnResume: true,
   autoSyncEnabled: true,
   lastSyncState: {},
   lastSyncStates: {},

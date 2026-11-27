@@ -178,6 +178,14 @@ export class GitHubSyncSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: "Sync when Obsidian returns",
+						desc: "Run a full sync each time Obsidian comes back to the foreground. On iOS and Android the periodic sync stops while the app is in the background, so this keeps a phone up to date. Independent of the periodic auto sync.",
+						control: {
+							type: "toggle",
+							key: "syncOnResume",
+						},
+					},
+					{
 						name: "Auto sync enabled",
 						desc: "Periodically commit and push local changes on a schedule.",
 						control: {
